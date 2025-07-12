@@ -512,7 +512,7 @@ void command_parser()
 
 {
   //********* Publish consumption of a single month or month 1 to 12 ***********************
-  // SYNTAX  : "Energy/Test/command"
+  // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "Month, x"
   // value for x : either 1 to 12 for a single month, x > 12 shows all 12 months
   //****************************************************************************************
@@ -522,7 +522,7 @@ void command_parser()
    }   
   
   //********* Set consumption for the start of a heating period ****************************
-  // SYNTAX  : "Energy/Test/command"
+  // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitP, x"
   // value for x : consumption in liter
   //****************************************************************************************
@@ -532,7 +532,7 @@ void command_parser()
    }   
 
   //********* Set initial consumption value for count  value of zero ***********************
-  // SYNTAX  : "Energy/Test/command"
+  // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitS, x"
   // value for x : consumption in liter
   //****************************************************************************************
@@ -542,7 +542,7 @@ void command_parser()
    }   
 
     //********* Set consumption for a single month to init data   ****************************
-  // SYNTAX  : "Energy/Test/command"
+  // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitM, x ; y"
   // value for x : selected month
   // value for y : consumption in liter
@@ -554,7 +554,7 @@ void command_parser()
 
   //********* Set consumption for the strat of a counting period ***************************
   // Initialyse RTC chip and set initial consumption value for count = 0of a counting period 
-  // SYNTAX  : "Energy/Test/command"
+  // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitC, x"
   // value for x : consumption in liter
   //****************************************************************************************
@@ -576,7 +576,7 @@ void setup()
   pinMode( UPDATE_PIN, INPUT_PULLUP );            // pull to ground if you want prevent ESP going to sleep
   logprint( "\r\nStarting Test!\r\n");
   //
-  Wire.setClock( 50000 );                        // reduce SCL speed to 50kHz
+  Wire.setClock( 50000 );                         // reduce SCL speed to 50kHz
   Wire.begin( );
   //
   // connect to WiFi
@@ -713,7 +713,7 @@ void loop()
   //
   energy1      = ( mexp3_per_count * brennwert * zustandszahl * delta_count )      ; // in kWh  : Gas m³ * Brennwert * Zustandszahl
   total_energy = ( mexp3_per_count * brennwert * zustandszahl * new_count )        ; // in kWh  : Gas m³ * Brennwert * Zustandszahl
-  consumption  = ( start_consumption + new_count * liter_per_count ) / 1000.0      ; // up to date consumptiion
+  consumption  = ( start_consumption + new_count * liter_per_count ) / 1000.0      ; // up to date consumption
   
   dtostrf( total_energy,     12, 3, valueString1 );
   dtostrf( energy1,          12, 3, valueString2 );
@@ -733,10 +733,11 @@ void loop()
    //
    // write data to the ThingSpeak channel
    //
-   ThingSpeak.setField( Thingspeak_1, valueString1 );            // total consumption
-   ThingSpeak.setField( Thingspeak_2, valueString2  );           // consumption between two readouts
-   ThingSpeak.setField( Thingspeak_4, valueString4  );           // total counts 
-   ThingSpeak.setField( Thingspeak_5, valueString3  );           // Gas m³
+   ThingSpeak.setField( 1, valueString1 );           // total consumption
+   ThingSpeak.setField( 2, valueString2 );           // consumption between two readouts
+   ThingSpeak.setField( 3, valueString3 );           // Gas m³ 
+   ThingSpeak.setField( 4, valueString4 );           // total counts
+   ThingSpeak.setField( 5, valueString5 );           // Power_kW
    // send data to Thingspeak fields
    Send_data( );
 }
@@ -763,7 +764,7 @@ void loop()
   //
   //  check if Sleep or wait
   //
-  if ( digitalRead( UPDATE_PIN ) == 1 )      // pull UPDATE ptin LOW to prevent sleep
+  if ( digitalRead( UPDATE_PIN ) == 1 )      // pull UPDATE pin LOW to prevent sleep
   {
     logprint( "Going to sleep\n" );
     delay( 1000 );
