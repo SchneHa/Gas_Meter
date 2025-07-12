@@ -542,7 +542,7 @@ void command_parser()
       set_start( );             // set period start value
    }   
 
-    //********* Set consumption for a single month to init data   ****************************
+  //********* Set consumption for a single month to init data   ****************************
   // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitM, x ; y"
   // value for x : selected month
