@@ -8,6 +8,7 @@
 //#define THINGSPEAK                                 // if you want send data to the Internet
 
 #include <Wire.h>
+#include <PicoMQTT.h>
 #include "Gas_WiFi.h"
 #include "Gas_MQTT.h"
 #include "Gas_Time.h"
