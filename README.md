@@ -35,29 +35,29 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 * Diese Daten/Kommandos können vom Broker an den ESP8266 gesendet werden
 
 1. Publish consumption of a single month or month 1 to 12 
- * SYNTAX  : "Energy/Test/command"
+ * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "Month, x"
  * value for x : either 1 to 12 for a single month, x > 12 shows all 12 months
   
  2. Set consumption for the start of a heating period 
- * SYNTAX  : "Energy/Test/command"
+ * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "InitP, x"
  * value for x : consumption in liter
 
  3. Set initial consumption value for a count value of zero 
- * SYNTAX  : "Energy/Test/command"
+ * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "InitS, x"
  * value for x : consumption in liter
 
  4. Set consumption for a single month to init data  
- * SYNTAX  : "Energy/Test/command"
+ * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "InitM, x ; y"
  * value for x : selected month
  * value for y : consumption in liter
  
  5. Set consumption for the start of a counting period 
  * Initialyse RTC chip and set initial consumption value for count = 0 of a counting period 
- * SYNTAX  : "Energy/Test/command"
+ * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "InitC, x"
  * value for x : consumption in liter
 
