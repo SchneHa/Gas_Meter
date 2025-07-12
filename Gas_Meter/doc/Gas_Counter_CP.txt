@@ -14,6 +14,7 @@
 --> These libraries are needed
 
 #include <Wire.h>
+#include <PicoMQTT.h>
 #include "Gas_Thingspeak.h"                                // if you don't want to use Thigspeak, just remove this include and all related calls/data 
 
 --> these modules hold some functions for the related topic
@@ -219,11 +220,11 @@ void loop()
   //
   // send data to Thingsspeak fields
   //
-  ThingSpeak.setField( Thingspeak_1, valueString1 );            // total consumption
-  ThingSpeak.setField( Thingspeak_2, valueString2  );           // consumption between two readouts
-  ThingSpeak.setField( Thingspeak_3, valueString3  );           // consumption between two Thingspeak updates
-  ThingSpeak.setField( Thingspeak_4, valueString4  );           // total counts 
-  ThingSpeak.setField( Thingspeak_5, valueString5  );           // Gas m³
+  ThingSpeak.setField( 1, valueString1 );           // total consumption
+  ThingSpeak.setField( 2, valueString2 );           // consumption between two readouts
+  ThingSpeak.setField( 3, valueString3 );           // consumption between two Thingspeak updates
+  ThingSpeak.setField( 4, valueString4 );           // total counts 
+  ThingSpeak.setField( 5, valueString5 );           // Gas m³
   //
   // write to the ThingSpeak channel
   //
