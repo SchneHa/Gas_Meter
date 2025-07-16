@@ -15,7 +15,7 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 * Diese Daten werden im RTC RAM gespeichert
 
 1. Zählimpulse
-2. Zählerstand zu Beginn der Messung (Counts = 0)
+2. Zählerstand zu Beginn der Messung (Counts=0)
 3. Zählerstand zu Beginn der Abrechnungsperiode
 4. monatlicher Verbrauch in m³
 5. Datum und Uhrzeit des letzen Auslesens des RTC Bausteins
@@ -27,17 +27,17 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 3. Verbrauch zwischen zwei Zugriffen auf den RTC Speicher in kWh
 4. Anzahl der Impulse seit Reset
 5. Gesamtverbrauch in m³
-6. Zählerstand zum Begin der Messung (Counts = 0) in Liter
+6. Zählerstand zum Begin der Messung (Counts=0) in Liter
 7. Zählerstand zum Begin der Abrechnungsperiode in Liter
 8. nach Bedarf monatlicher Verbrauch
 9. Status (OK wenn Zugriff auf den RTC Baustein möglich)
 
 * Diese Daten/Kommandos können vom Broker an den ESP8266 gesendet werden
 
-1. Veröffentliche den Verbrauch eine einzelnen Monats oder aller Monate von 1 to 12 
+1. Veröffentliche den Verbrauch eines einzelnen Monats oder aller Monate von 1 to 12 
  * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "Monat, x"
- * Wert für x: entwede 1 bis 12 für einen einzelnen Monat, oder x > 12 für alle 12 Monate
+ * Wert für x: entweder 1 bis 12 für einen einzelnen Monat, oder x > 12 für alle 12 Monate
   
  2. Setze den Wert für den Verbrauch zu Beginn der Heizperiode 
  * SYNTAX  : "Energy/Gas/command"
@@ -65,6 +65,6 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 
 * in Gas_WiFi SSID und Passwort eintragen
 * in Gas_MQTT IP Adresse des MQTT Broker eintragen
-* ggfs. Thingspeak aktivieren und Channel und Key eintragen
+* ggfs. Thingspeak aktivieren und Channelnummer und Key eintragen
 * Topic für MQTT an die eigenen Wünsche anpassen
   
