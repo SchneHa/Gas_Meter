@@ -5,7 +5,7 @@
 Manche Gaszähler geben pro vebrauchte 10 Liter einen magnetischen Impuls ab.
 Dieser Impuls wird mit einem Hall Sensor in elektrische Impulse umgewandelt, ein RTC Baustein PCF8583 arbeitet als Zähler und speichert die Zahl der Impulse im internen RAM ab.
 
-PCB Eagle Dateien (für Version 1.3) und KiCAD Dateien (für Version 1.4) und Stückliste für beide Versionen anbei.
+PCB Eagle Dateien (für Version 1.3) und KiCAD Dateien (für Version 1.4) sowie Stückliste (BOM) für beide Versionen anbei.
 
 Die Daten werden mit Hilfe eines ESP8266 (z.B. Wemos D1 mini) über die I²C Schnittstelle ausgelesen und verarbeitet. 
 Über das MQTT Protokoll werden die Daten an einen lokalen Broker weitergeleitet, Daten werden nicht ins Internet hochgeladen.
