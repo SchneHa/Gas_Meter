@@ -5,19 +5,19 @@
 Manche Gaszähler geben pro vebrauchte 10 Liter einen magnetischen Impuls ab.
 Dieser Impuls wird mit einem Hall Sensor in elektrische Impulse gewandelt, ein RTC Baustein PCF8583 arbeitet als Zähler und speichert die Zahl der Impulse im internen RAM ab.
 
-PCB Eagle Dateien und Stückliste anbei.
+PCB Eagle Dateien (für Version 1.3) und KiCAD Dateien (für Version 1.4) und Stückliste für beide Versionen anbei.
 
-Die Daten werden mit Hilfe eines ESP8266 über die I²C SAchnittstelle ausgelesen und verarbeitet. 
+Die Daten werden mit Hilfe eines ESP8266 (z.B. Wemos D1 mini) über die I²C Schnittstelle ausgelesen und verarbeitet. 
 Über das MQTT Protokoll werden die Daten an einen lokalen Broker weitergeleitet, Daten werden nicht ins Internet hochgeladen.
-Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten bei Stromausfall.
+Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten bei Stromausfall. In der Version 1.4 wird der Sensor durch den ESP8266 versorgt, die Knopfzelle bildet die Backup Batterie.
 
 
 * Diese Daten werden im RTC RAM gespeichert
 
 1. Zählimpulse
-2. Zählerstand zu Beginn der Messung ( Counts = 0 )
-3. Zählerstand zu Beginn der Abrechnungsperiod
-4. monatlicherVerbrauch in m³
+2. Zählerstand zu Beginn der Messung (Counts = 0)
+3. Zählerstand zu Beginn der Abrechnungsperiode
+4. monatlicher Verbrauch in m³
 5. Datum und Uhrzeit des letzen Auslesens des RTC Bausteins
 
 * Diese Daten werden über MQTT an den Broker gesendet
@@ -27,44 +27,44 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 3. Verbrauch zwischen zwei Zugriffen auf den RTC Speicher in kWh
 4. Anzahl der Impulse seit Reset
 5. Gesamtverbrauch in m³
-6. Zählerstand zum Begin der Messung ( Counts = 0 ) in Liter
+6. Zählerstand zum Begin der Messung (Counts = 0) in Liter
 7. Zählerstand zum Begin der Abrechnungsperiode in Liter
 8. nach Bedarf monatlicher Verbrauch
-9. Status ( OK wenn Zugriff auf den RTC Baustein möglich )
+9. Status (OK wenn Zugriff auf den RTC Baustein möglich)
 
 * Diese Daten/Kommandos können vom Broker an den ESP8266 gesendet werden
 
-1. Publish consumption of a single month or month 1 to 12 
+1. Veröffentliche den Verbrauch eine einzelnen Monats oder aller Monate von 1 to 12 
  * SYNTAX  : "Energy/Gas/command"
- * PAYLOAD : "Month, x"
- * value for x : either 1 to 12 for a single month, x > 12 shows all 12 months
+ * PAYLOAD : "Monat, x"
+ * Wert für x: entwede 1 bis 12 für einen einzelnen Monat, oder x > 12 für alle 12 Monate
   
- 2. Set consumption for the start of a heating period 
+ 2. Setze den Wert für den Verbrauch zu Beginn der Heizperiode 
  * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "InitP, x"
- * value for x : consumption in liter
+ * Wert für x: Verbrauch in Litern
 
- 3. Set initial consumption value for a count value of zero 
+ 3. Setze den initialen Verbrauchswert für den Counter Null 
  * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "InitS, x"
- * value for x : consumption in liter
+ * Wert für x: Verbrauch in Litern
 
- 4. Set consumption for a single month to init data  
+ 4. Setze den initialen Wert für den Verbrauch eines einzelnen Monats  
  * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "InitM, x ; y"
- * value for x : selected month
- * value for y : consumption in liter
+ * value for x: ausgewählter Monat
+ * value for y: Verbrauch in Litern
  
- 5. Set consumption for the start of a counting period 
- * Initialyse RTC chip and set initial consumption value for count = 0 of a counting period 
+ 5. Setze den Wert für den Start der Abrechnungsperiode 
+ * Initialisiert den RTC chip und setzt den initialen Verbrauchswert für count=0 der Abrechnungsperiode 
  * SYNTAX  : "Energy/Gas/command"
  * PAYLOAD : "InitC, x"
- * value for x : consumption in liter
+ * value for x: Verbrauch in Litern
 
 ## Vorbereitung
 
 * in Gas_WiFi SSID und Passwort eintragen
 * in Gas_MQTT IP Adresse des MQTT Broker eintragen
-* ggfs. Thinkspeak aktivieren und Channel und Key eintragen
+* ggfs. Thingspeak aktivieren und Channel und Key eintragen
 * Topic für MQTT an die eigenen Wünsche anpassen
   
