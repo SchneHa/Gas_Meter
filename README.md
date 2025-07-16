@@ -1,4 +1,4 @@
-# Gas Verbrauch messen und verarbeiten 
+# Gasverbrauch messen und verarbeiten 
 
 ## Funktion
 
