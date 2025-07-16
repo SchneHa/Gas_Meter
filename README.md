@@ -3,7 +3,7 @@
 ## Funktion
 
 Manche Gaszähler geben pro vebrauchte 10 Liter einen magnetischen Impuls ab.
-Dieser Impuls wird mit einem Hall Sensor in elektrische Impulse gewandelt, ein RTC Baustein PCF8583 arbeitet als Zähler und speichert die Zahl der Impulse im internen RAM ab.
+Dieser Impuls wird mit einem Hall Sensor in elektrische Impulse umgewandelt, ein RTC Baustein PCF8583 arbeitet als Zähler und speichert die Zahl der Impulse im internen RAM ab.
 
 PCB Eagle Dateien (für Version 1.3) und KiCAD Dateien (für Version 1.4) und Stückliste für beide Versionen anbei.
 
