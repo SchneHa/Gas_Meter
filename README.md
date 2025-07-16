@@ -9,7 +9,7 @@ PCB Eagle Dateien (für Version 1.3) und KiCAD Dateien (für Version 1.4) sowie 
 
 Die Daten werden mit Hilfe eines ESP8266 (z.B. Wemos D1 mini) über die I²C Schnittstelle ausgelesen und verarbeitet. 
 Über das MQTT Protokoll werden die Daten an einen lokalen Broker weitergeleitet, Daten werden nicht ins Internet hochgeladen.
-Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten bei Stromausfall. In der Version 1.4 wird der Sensor durch den ESP8266 versorgt, die Knopfzelle bildet die Backup Batterie.
+Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten bei Stromausfall. In der Version 1.4 wird der Sensor durch den ESP8266 versorgt, die Knopfzelle arbeiter als Backup Batterie.
 
 
 * Diese Daten werden im RTC RAM gespeichert
