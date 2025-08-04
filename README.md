@@ -37,7 +37,7 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 3. Verbrauch zwischen zwei Zugriffen auf den RTC Speicher in kWh
 4. Anzahl der Impulse seit Reset
 5. Gesamtverbrauch in m³
-6. Zählerstand zum Begin der Messung (Counts=0) in Liter
+6. Zählerstand zu Beginn der Messung (Counts=0) in Liter
 7. Zählerstand zum Begin der Abrechnungsperiode in Liter
 8. nach Bedarf monatlicher Verbrauch
 9. Status (OK wenn Zugriff auf den RTC Baustein möglich)
