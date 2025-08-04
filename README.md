@@ -38,7 +38,7 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 4. Anzahl der Impulse seit Reset
 5. Gesamtverbrauch in m³
 6. Zählerstand zu Beginn der Messung (Counts=0) in Liter
-7. Zählerstand zum Begin der Abrechnungsperiode in Liter
+7. Zählerstand zu Begin der Abrechnungsperiode in Liter
 8. nach Bedarf monatlicher Verbrauch
 9. Status (OK wenn Zugriff auf den RTC Baustein möglich)
 
