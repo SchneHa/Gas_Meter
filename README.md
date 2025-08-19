@@ -7,7 +7,7 @@ Dieser Impuls wird mit einem Hall Sensor in elektrische Impulse umgewandelt, ein
 
 PCB Eagle Dateien (für Version 1.3) und KiCAD Dateien (für Version 1.4) sowie Stückliste (BOM) für beide Versionen anbei.
 
-Für die Version 1.4 habe ich noch einige Platinen übrig, bei Bedarf bitte melden:
+Ich habe sowohl für die Version 1.3 als auch für die Version 1.4 noch einige Platinen übrig, bei Bedarf bitte melden:
 ```
 PCB unbestückt: 5€
 PCB mit Bauteilen: 15€
