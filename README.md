@@ -75,6 +75,7 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 ## Vorbereitung
 
 * in Gas_WiFi SSID und Passwort eintragen
+* für ArduinoOTA (Firmware Update Over The Air) hashed Wert eines gewählte Passortes eintragen, der Hash-Wert kann über https://www.md5hashgenerator.com/ ermittelt werden
 * in Gas_MQTT IP Adresse des MQTT Broker eintragen
 * ggfs. Thingspeak aktivieren und Channelnummer und Key eintragen
 * Topic für MQTT an die eigenen Wünsche anpassen
