@@ -5,8 +5,8 @@ const char* host     = "api.thingspeak.com";
 const int   httpPort = 80;
 String      Gas_Thingspeak_data;
 
-#define     ThingSpeakKEY   "SYUXBFGB7UDO9G0P"
-#define     myChannelNumber 3006846    // put in your channel number
+#define     ThingSpeakKEY   "xxxxxxxxxxxxxxxx"
+#define     myChannelNumber 1234567    // put in your channel number
 
 
 //
