@@ -1,6 +1,6 @@
 //#include "picoMQTT.h"
 //
-PicoMQTT::Client mqtt( "192.168.1.12" );
+PicoMQTT::Client mqtt( "xxx.xxx.xxx.xxx" );
 String    MQTT_command        = "";                // commands for Counter
 String    topic               = "Energy/Gas/";
 //
