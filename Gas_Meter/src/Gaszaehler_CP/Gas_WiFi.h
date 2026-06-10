@@ -4,8 +4,8 @@
 //#include <WiFi.h>
 //
 
-const char* ssid               = "FRITZ!Box 7490";
-const char* password           = "38417616893382122271";
+const char* ssid               = "your ssid";
+const char* password           = "your password";
 
 WiFiClient        Thingspeak_client ;
 
