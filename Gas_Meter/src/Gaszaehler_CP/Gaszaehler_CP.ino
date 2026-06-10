@@ -396,7 +396,7 @@ void Init_counter( )
      logprint( "***  Failed to clear counter *******");           // do not clear counter after reset
   if ( set_My_4_bytes ( ADDRESS_OLD_COUNTER, 0 ) == false )
      logprint( "***  Failed to clear old counter data *******");  // do not clear counter after reset
-  //set_My_4_bytes ( ADDRESS_START_METER, 0 );                   // do not clear start consumption after reset
+  //set_My_4_bytes ( ADDRESS_START_METER, 0 );                    // do not clear start consumption after reset
   logprint( "***  Clear Time *******" );
   set_Time       ( ADDRESS_OLD_TIME, 0, 0, 0 );
   //
@@ -733,7 +733,7 @@ void setup()
   //---------------
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname("Gascounter");
-  ArduinoOTA.setPasswordHash("8839735356e0412c4735811c23214209");  // hashed pwd (s3uErNgW)
+  ArduinoOTA.setPasswordHash("your hashed pw here");  // hashed pwd
 
   ArduinoOTA.onStart([]() 
   {
