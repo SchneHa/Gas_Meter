@@ -733,7 +733,16 @@ void setup()
   //---------------
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname("Gascounter");
-  ArduinoOTA.setPasswordHash("8839735356e0412c4735811c23214209");  // hashed pwd (s3uErNgW)
+  ArduinoOTA.setPasswordHash("your hashed password here");  // hashed pwd
+
+  //
+  //**************************************************************************************************
+  //                                          H A S H E D  PWD                                       *
+  //**************************************************************************************************
+  //           Das hashed pwd kann zum Beispiel gebildet werden über den Hash-Generator              *
+  //                               https://www.md5hashgenerator.com/                                 *
+  //**************************************************************************************************
+  //
 
   ArduinoOTA.onStart([]() 
   {
