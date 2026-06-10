@@ -2,7 +2,7 @@
 
 ## Funktion
 
-Manche Gaszähler geben pro vebrauchte 10 Liter einen magnetischen Impuls ab.
+Manche Gaszähler geben pro verbrauchte 10 Liter einen magnetischen Impuls ab.
 Dieser Impuls wird mit einem Hall Sensor in elektrische Impulse umgewandelt, ein RTC Baustein PCF8583 arbeitet als Zähler und speichert die Zahl der Impulse im internen RAM ab.
 
 PCB Eagle Dateien (für Version 1.3) und KiCAD Dateien (für Version 1.4) sowie Stückliste (BOM) für beide Versionen anbei.
@@ -18,7 +18,7 @@ hans(dot)schneider(at)gmx(dot)ch
 ```
 
 Die Daten werden mit Hilfe eines ESP8266 (z.B. Wemos D1 mini) über die I²C Schnittstelle ausgelesen und verarbeitet. 
-Über das MQTT Protokoll werden die Daten an einen lokalen Broker weitergeleitet, Daten werden nicht ins Internet hochgeladen.
+Über das MQTT Protokoll werden die Daten an einen lokalen Broker weitergeleitet, Daten werden nicht ins Internet hochgeladen, es sei denn, man richtet die Verarbeitung über Thingspeak explizit ein.
 Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten bei Stromausfall. In der Version 1.4 wird der Sensor durch den ESP8266 versorgt, die Knopfzelle arbeitet als Backup Batterie.
 
 
@@ -40,7 +40,8 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
 6. Zählerstand zu Beginn der Messung (Counts=0) in Liter
 7. Zählerstand zu Begin der Abrechnungsperiode in Liter
 8. nach Bedarf monatlicher Verbrauch
-9. Status (OK wenn Zugriff auf den RTC Baustein möglich)
+9. täglicher Verbrauch in m³
+10. Status (OK wenn Zugriff auf den RTC Baustein möglich)
 
 * Diese Daten/Kommandos können vom Broker an den ESP8266 gesendet werden
 
