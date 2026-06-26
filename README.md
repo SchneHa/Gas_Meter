@@ -72,10 +72,17 @@ Eine 3 Volt Knopfzelle versorgt den Baustein mit Energie und erhält die Daten b
  * PAYLOAD : "InitC, x"
  * value for x: Verbrauch in Litern
 
+ 6. Setze den Tageszähler zurück auf Null 
+ * Setzt den aktuellen Verbrauchswert für den Tageszähler auf 0 zurück 
+ * SYNTAX  : "Energy/Gas/command"
+ * PAYLOAD : "InitD"
+
+    
+
 ## Vorbereitung
 
 * in Gas_WiFi SSID und Passwort eintragen
-* für ArduinoOTA (Firmware Update **O**ver **T**he **A**ir) hashed Wert eines gewählte Passortes eintragen, der Hash-Wert kann über https://www.md5hashgenerator.com/ ermittelt werden
+* für ArduinoOTA (Firmware Update **O**ver **T**he **A**ir) hashed Wert eines gewählte Passortes eintragen, der Hash-Wert kann z.B. über https://hash-generieren.de/ oder https://www.md5hashgenerator.com/ oder https://www.hexhero.com/tools/sha256-hash-generator gebildet werden.    
 * in Gas_MQTT IP Adresse des MQTT Broker eintragen
 * ggfs. Thingspeak aktivieren und Channelnummer und Key eintragen
 * Topic für MQTT an die eigenen Wünsche anpassen
