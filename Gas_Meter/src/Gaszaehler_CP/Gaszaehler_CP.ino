@@ -1,7 +1,9 @@
 /**************************************************************************/
 /*
-  Use RTC as counter and read results with TWI
-  Store last value in RAM
+  Gas counter using RTC as counter and storing values in RAM
+  (c) Hans Schneider 2026
+  forked from /Rainer-G/Gas_Meter
+  Board: Lolin(Wemos) D1 R2 & mini 
 */
 /**************************************************************************/
 #define THINGSPEAK
@@ -16,66 +18,76 @@
   #include "Gas_Thingspeak.h"
 #endif
 
-#define RESET_PIN                D7
-#define UPDATE_PIN               D6
+#define RESET_PIN                  D7
+#define UPDATE_PIN                 D6
 
-#define COUNTER_MODE             0x20
-#define COUNTER_ADDRESS          0x50
+#define COUNTER_MODE               0x20
+#define COUNTER_ADDRESS            0x50
+#define CONTROL_ADDRESS            0x00
+#define ADDRESS_COUNTER            0x01
 
-#define CONTROL_ADDRESS          0x00
-#define ADDRESS_COUNTER          0x01
+#define RAM_OFFSET                 0x10
+#define ADDRESS_OLD_COUNTER        RAM_OFFSET
+#define ADDRESS_OLD_TIME           ADDRESS_OLD_COUNTER      + 4
+#define ADDRESS_OLD_DATE           ADDRESS_OLD_TIME         + 4
+#define ADDRESS_START_METER        ADDRESS_OLD_DATE         + 4
+#define ADDRESS_START_PERIOD       ADDRESS_START_METER      + 4
+#define ADDRESS_MONTH_01           ADDRESS_START_PERIOD     + 4
 
-#define RAM_OFFSET               0x10
-#define ADDRESS_OLD_COUNTER      RAM_OFFSET
-#define ADDRESS_OLD_TIME         ADDRESS_OLD_COUNTER      + 4
-#define ADDRESS_OLD_DATE         ADDRESS_OLD_TIME         + 4
-#define ADDRESS_START_METER      ADDRESS_OLD_DATE         + 4
-#define ADDRESS_START_PERIOD     ADDRESS_START_METER      + 4
-#define ADDRESS_MONTH_01         ADDRESS_START_PERIOD     + 4
+#define ADDRESS_DAY_START_COUNT    ADDRESS_MONTH_01         + ( 4 * 12 )
+#define ADDRESS_DAY_DATE           ADDRESS_DAY_START_COUNT  + 4
+#define ADDRESS_DAY_INITIALIZED    ADDRESS_DAY_DATE         + 4
 
-#define ADDRESS_DAY_START_COUNT  ADDRESS_MONTH_01         + ( 4 * 12 )
-#define ADDRESS_DAY_DATE         ADDRESS_DAY_START_COUNT  + 4
-#define ADDRESS_DAY_INITIALIZED  ADDRESS_DAY_DATE         + 4
-
-#define FLAG_VALID               0xA5
+#define FLAG_VALID                 0xA5
 #define ADDRESS_START_METER_FLAG   (ADDRESS_START_METER + 4)
 #define ADDRESS_START_PERIOD_FLAG  (ADDRESS_START_PERIOD + 4)
 #define ADDRESS_MONTH_FLAG_BASE    (ADDRESS_MONTH_01 + (4 * 12))
 
-bool      sleep                = false;
-bool      error                = false;
-bool      log_msg              = true;
+#define MQTT_DEBUG_NEW_COUNT       "debug/new_count"
+#define MQTT_DEBUG_DAY_START_COUNT "debug/day_start_count"
+#define MQTT_DEBUG_DAILY_COUNT     "debug/daily_count"
+#define MQTT_DEBUG_DAY_INIT        "debug/day_initialized"
+#define MQTT_DEBUG_DATE            "debug/date"
+#define MQTT_DEBUG_TIME            "debug/time"
+#define MQTT_DEBUG_TAG             "debug/tag"
+
+// Global runtime state
+bool      error               = false;
+bool      log_msg             = true;
+
 uint32_t  old_time;
-uint8_t   old_date[ 3 ];
 uint32_t  new_time;
-uint8_t   new_date[ 3 ];
-uint32_t  old_count            = 0;
-uint32_t  new_count            = 0;
-uint32_t  delta_count          = 0;
-uint32_t  liter_per_count      = 10;
-float     mexp3_per_count      = 0.01;
-double    brennwert            = 11.688629;
-double    zustandszahl         = 0.93940;
-uint16_t  year_offset          = 2000;
-float     energy1              = 0;
-double    total_energy         = 0;
-uint32_t  start_consumption    = 0;
-double    consumption          = 0;
-uint32_t  start_period         = 0;
-uint32_t  period               = 0;
-uint32_t  consumption_data     = 0;
-String    consumption_string   = "";
-uint8_t   month_data           = 0;
-uint32_t  temp_data            = 0;
-uint32_t day_start_count       = 0;
-uint32_t daily_count           = 0;
-double daily_consumption_l     = 0;
-double daily_volume_m3         = 0;
-double daily_energy_kWh        = 0;
-uint8_t last_day               = 0;
-uint8_t last_month             = 0;
-uint16_t last_year             = 0;
-uint8_t day_initialized        = 0;
+
+uint32_t  old_count           = 0;
+uint32_t  new_count           = 0;
+uint32_t  delta_count         = 0;
+
+uint32_t  liter_per_count     = 10;
+float     mexp3_per_count     = 0.01;
+double    brennwert           = 11.688629;
+double    zustandszahl        = 0.93940;
+uint16_t  year_offset         = 2000;
+
+float     energy1             = 0;
+double    total_energy        = 0;
+
+uint32_t  start_consumption   = 0;
+double    consumption         = 0;
+uint32_t  start_period        = 0;
+uint32_t  period              = 0;
+
+String    consumption_string  = "";
+
+uint32_t  day_start_count     = 0;      // start value for normal daily counting
+uint32_t  daily_count         = 0;      // calculated daily counter
+double    daily_consumption_l = 0;
+double    daily_volume_m3     = 0;
+double    daily_energy_kWh    = 0;
+uint8_t   day_initialized     = 0;
+
+// Manual reset handling for InitD
+uint32_t  manual_day_start    = 0;      // anchor for manual reset
+bool      manual_reset_active  = false;  // true until first increment after InitD
 
 char      valueString1[ 80 ];
 char      valueString2[ 80 ];
@@ -91,12 +103,11 @@ char      valueString11[ 80 ];
 char      valueString12[ 80 ];
 char      valueString13[ 80 ];
 
-uint8_t old_day;
-uint8_t old_month;
 uint8_t old_hour;
 uint8_t old_min;
 uint8_t old_sec;
 
+// Helper unions for byte conversion
 union long_t
 {
   uint32_t long_data;
@@ -109,16 +120,19 @@ union int_t
   uint8_t  byte_data[ 2 ];
 };
 
+// Convert BCD to decimal
 uint8_t bcd2byte( uint8_t value )
 {
   return (( value >> 4 ) * 10 ) + ( value & 0x0f );
 }
 
+// Convert decimal to BCD
 uint8_t byte2bcd( uint8_t value )
 {
   return (( value / 10) << 4 ) + ( value % 10 );
 }
 
+// Set counter mode on the RTC counter chip
 bool set_Counter_Mode( )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
@@ -127,11 +141,13 @@ bool set_Counter_Mode( )
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+// Read control register
 uint8_t get_Mode( )
 {
   return get_Byte( CONTROL_ADDRESS );
 }
 
+// Write one byte to RTC RAM
 bool set_Byte( int8_t address, int8_t value )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
@@ -140,6 +156,7 @@ bool set_Byte( int8_t address, int8_t value )
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+// Read one byte from RTC RAM
 int8_t get_Byte( int8_t address )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
@@ -149,9 +166,10 @@ int8_t get_Byte( int8_t address )
   return Wire.read( );
 }
 
+// Write 2 bytes to RTC RAM
 bool set_Integer( int8_t address, int16_t value )
 {
-  int_t  temp_data;
+  int_t temp_data;
   temp_data.int_data = value;
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
@@ -160,12 +178,11 @@ bool set_Integer( int8_t address, int16_t value )
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+// Read 2 bytes from RTC RAM
 bool get_Integer( int8_t address, int16_t &value )
 {
-  int_t  temp_data;
-
+  int_t temp_data;
   value = 0;
-
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
   Wire.endTransmission( );
@@ -176,34 +193,31 @@ bool get_Integer( int8_t address, int16_t &value )
     Serial.println("***************** Error occured when reading 2 bytes ******************");
     return false;
   }
-  else
-  {
-    temp_data.byte_data[ 0 ] = Wire.read( );
-    temp_data.byte_data[ 1 ] = Wire.read( );
-    value                    = temp_data.int_data;
-    return true;
-  }
+  temp_data.byte_data[ 0 ] = Wire.read( );
+  temp_data.byte_data[ 1 ] = Wire.read( );
+  value = temp_data.int_data;
+  return true;
 }
 
+// Write 4 bytes to RTC RAM
 bool set_My_4_bytes( int8_t address, int32_t value )
 {
-  union long_t  temp_data;
+  union long_t temp_data;
   temp_data.long_data = value;
   Wire.beginTransmission( COUNTER_ADDRESS );
-  Wire.write(  address );
-  Wire.write(  temp_data.byte_data[ 0 ] );
-  Wire.write(  temp_data.byte_data[ 1 ] );
-  Wire.write(  temp_data.byte_data[ 2 ] );
-  Wire.write(  temp_data.byte_data[ 3 ] );
+  Wire.write( address );
+  Wire.write( temp_data.byte_data[ 0 ] );
+  Wire.write( temp_data.byte_data[ 1 ] );
+  Wire.write( temp_data.byte_data[ 2 ] );
+  Wire.write( temp_data.byte_data[ 3 ] );
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+// Read 4 bytes from RTC RAM
 bool get_My_4_bytes( int8_t address, uint32_t &value )
 {
-  long_t  temp_data;
-
+  long_t temp_data;
   value = 0;
-
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
   Wire.endTransmission( );
@@ -214,40 +228,40 @@ bool get_My_4_bytes( int8_t address, uint32_t &value )
     Serial.println("********************* Error occured when reading My 4 bytes **************");
     return false;
   }
-  else
-  {
-    temp_data.byte_data[ 0 ] = Wire.read( );
-    temp_data.byte_data[ 1 ] = Wire.read( );
-    temp_data.byte_data[ 2 ] = Wire.read( );
-    temp_data.byte_data[ 3 ] = Wire.read( );
-    value                    = temp_data.long_data;
-    return true;
-  }
+  temp_data.byte_data[ 0 ] = Wire.read( );
+  temp_data.byte_data[ 1 ] = Wire.read( );
+  temp_data.byte_data[ 2 ] = Wire.read( );
+  temp_data.byte_data[ 3 ] = Wire.read( );
+  value = temp_data.long_data;
+  return true;
 }
 
+// Read the external counter value
 bool get_Counter( int8_t address, uint32_t &count  )
 {
   count = 0;
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
   Wire.endTransmission( );
-  byte len = Wire.requestFrom( COUNTER_ADDRESS, 3);
-
-  if (len == 0)
+  byte len = Wire.requestFrom( COUNTER_ADDRESS, 3 );
+  if ( len == 0 )
   {
     Serial.println("");
     Serial.println("********************* Error occured when reading Counter *****************");
     return false;
   }
-  else
-  {
-    count =         bcd2byte( Wire.read( ));
-    count = count + bcd2byte( Wire.read( )) * 100L;
-    count = count + bcd2byte( Wire.read( )) * 10000L;
-    return true;
-  }
+
+  uint8_t b1 = Wire.read();
+  uint8_t b2 = Wire.read();
+  uint8_t b3 = Wire.read();
+
+  count = bcd2byte( b1 );
+  count = count + bcd2byte( b2 ) * 100L;
+  count = count + bcd2byte( b3 ) * 10000L;
+  return true;
 }
 
+// Write counter value in BCD format
 bool set_Counter( int8_t address, int32_t value )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
@@ -258,51 +272,54 @@ bool set_Counter( int8_t address, int32_t value )
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+// Read time from RTC RAM
 void get_Time( int8_t address, uint8_t &o_hour, uint8_t &o_min, uint8_t &o_sec )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
   Wire.endTransmission( );
   Wire.requestFrom( COUNTER_ADDRESS, 3 );
-
   o_hour   = Wire.read( );
   o_min    = Wire.read( );
   o_sec    = Wire.read( );
 }
 
+// Write time to RTC RAM
 bool set_Time( int8_t address, uint8_t o_hour, uint8_t o_min, uint8_t o_sec )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
   Wire.write( o_hour );
-  Wire.write( o_min  );
-  Wire.write( o_sec  );
+  Wire.write( o_min );
+  Wire.write( o_sec );
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+// Write date to RTC RAM
 bool set_Date( int8_t address, uint8_t day, uint8_t month, int year )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
-  Wire.write( address  );
-  Wire.write( day ) ;
+  Wire.write( address );
+  Wire.write( day );
   Wire.write( month );
-  year = year - year_offset ;
+  year = year - year_offset;
   Wire.write( year );
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+// Read date from RTC RAM
 void get_Date( int8_t address, uint8_t &day, uint8_t &month, uint16_t &year )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
-  Wire.write( address  );
+  Wire.write( address );
   Wire.endTransmission();
   Wire.requestFrom( COUNTER_ADDRESS, 3 );
-
-  day   = Wire.read( );
-  month = Wire.read( );
-  year  = Wire.read( ) + year_offset;
+  day   = Wire.read();
+  month = Wire.read();
+  year  = Wire.read() + year_offset;
 }
 
+// Write 4-byte value and flag
 bool set_My_4_bytes_with_flag(int8_t address, uint32_t value, int8_t flag_address)
 {
   bool ok = set_My_4_bytes(address, value);
@@ -310,6 +327,7 @@ bool set_My_4_bytes_with_flag(int8_t address, uint32_t value, int8_t flag_addres
   return ok;
 }
 
+// Read 4-byte value only if flag is valid
 bool get_My_4_bytes_with_flag(int8_t address, int8_t flag_address, uint32_t &value)
 {
   uint8_t flag = get_Byte(flag_address);
@@ -321,280 +339,226 @@ bool get_My_4_bytes_with_flag(int8_t address, int8_t flag_address, uint32_t &val
   return get_My_4_bytes(address, value);
 }
 
+// Save the start count for a month
 bool set_month( int8_t month, uint32_t current_count )
 {
   uint8_t month_address = ADDRESS_MONTH_01 + ( month - 1 ) * 4;
   uint8_t flag_address  = ADDRESS_MONTH_FLAG_BASE + ( month - 1 );
-
   if (!set_My_4_bytes(month_address, current_count))
     return false;
-
   return set_Byte(flag_address, FLAG_VALID);
 }
 
-uint32_t get_month( int8_t month )
-{
-  uint8_t month_address = ADDRESS_MONTH_01 + ( month - 1 ) * 4;
-  uint8_t flag_address  = ADDRESS_MONTH_FLAG_BASE + ( month - 1 );
-  uint32_t month_start_count = 0;
-
-  if (get_Byte(flag_address) != FLAG_VALID)
-    return 0;
-
-  if ( get_My_4_bytes( month_address, month_start_count ) != true )
-    return 0;
-
-  return month_start_count;
-}
-
-uint32_t get_month_consumption( int8_t month, uint32_t current_count )
-{
-  uint32_t month_start_count = get_month( month );
-  uint32_t consumption = 0;
-
-  if ( current_count >= month_start_count )
-  {
-    consumption = ( current_count - month_start_count ) * liter_per_count;
-  }
-
-  return consumption;
-}
-
+// Simple logging helper
 char* logprint ( const char* format, ... )
 {
-  static char sbuf[ 128 ] ;
-  va_list     varArgs ;
-
-  va_start ( varArgs, format ) ;
-  vsnprintf ( sbuf, sizeof(sbuf), format, varArgs ) ;
-  va_end ( varArgs ) ;
-  if ( log_msg )
-  {
-    Serial.print ( sbuf ) ;
-  }
-  return sbuf ;
+  static char sbuf[ 128 ];
+  va_list varArgs;
+  va_start ( varArgs, format );
+  vsnprintf ( sbuf, sizeof(sbuf), format, varArgs );
+  va_end ( varArgs );
+  if ( log_msg ) Serial.print ( sbuf );
+  return sbuf;
 }
 
-void Init_counter()
+// Initialize the hardware counter and time base
+void init_counter()
 {
-  logprint( "***  Set Counter Mode *******" );
-  if ( set_Counter_Mode( ) == false )
-     logprint( "***  failed to set Counter Mode *******");
-  logprint( "***  Clear counter data *******" );
-  if ( set_Counter    ( ADDRESS_COUNTER, 0 ) == false )
-     logprint( "***  Failed to clear counter *******");
-  if ( set_My_4_bytes ( ADDRESS_OLD_COUNTER, 0 ) == false )
-     logprint( "***  Failed to clear old counter data *******");
-  logprint( "***  Clear Time *******" );
-  set_Time( ADDRESS_OLD_TIME, 0, 0, 0 );
-  logprint( "***  Set Time *******" );
+  set_Counter_Mode();
+  set_Counter( ADDRESS_COUNTER, 0 );
+  set_My_4_bytes( ADDRESS_OLD_COUNTER, 0 );
   set_Time( ADDRESS_OLD_TIME, Gas_hour, Gas_min, Gas_sec );
 }
 
+// Manual daily reset: start counting from zero again
+void init_day_counter()
+{
+  manual_day_start   = new_count;
+  manual_reset_active = true;
+
+  day_start_count = 0;
+  daily_count = 0;
+  daily_consumption_l = 0;
+  daily_volume_m3 = 0;
+  daily_energy_kWh = 0;
+
+  set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
+  set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
+  set_Byte(ADDRESS_DAY_INITIALIZED, 1);
+
+  publish_topic("debug/day_start_count", "0");
+  publish_topic("debug/daily_count", "0");
+  publish_topic("debug/day_initialized", "1");
+
+  MQTT_command = "";
+}
+
+// Publish one or all monthly counters
 void publish_month( )
 {
-   uint8_t  cmd_month = 0;
-   uint8_t  cmd_value = 0;
-   uint8_t  cmd_start = 0;
-   uint8_t  cmd_end   = 0;
-   uint32_t month_start_count = 0;
-   uint32_t month_consumption = 0;
-   String   value3;
+  uint8_t  cmd_month = 0;
+  uint8_t  cmd_value = 0;
+  uint8_t  cmd_start = 0;
+  uint8_t  cmd_end   = 0;
+  uint32_t month_start_count = 0;
+  uint32_t month_consumption = 0;
+  String   value3;
 
-   consumption_string = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
-   cmd_value          = consumption_string.toInt();
-   cmd_month          = constrain( cmd_value, 1, 12 );
-   value3             = "";
+  consumption_string = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
+  cmd_value          = consumption_string.toInt();
+  cmd_month          = constrain( cmd_value, 1, 12 );
+  value3             = "";
 
-   if ( cmd_value <= 12 )
-   {
-      cmd_start = cmd_month;
-      cmd_end   = cmd_month;
-   }
-   else
-   {
-      cmd_start = 1;
-      cmd_end   = 12;
-   }
+  if ( cmd_value <= 12 )
+  {
+    cmd_start = cmd_month;
+    cmd_end   = cmd_month;
+  }
+  else
+  {
+    cmd_start = 1;
+    cmd_end   = 12;
+  }
 
-   for ( int i = cmd_start; i <= cmd_end; i++ )
-   {
-      uint8_t month_address = ADDRESS_MONTH_01 + ( i - 1 ) * 4;
-      uint8_t flag_address  = ADDRESS_MONTH_FLAG_BASE + ( i - 1 );
+  for ( int i = cmd_start; i <= cmd_end; i++ )
+  {
+    uint8_t month_address = ADDRESS_MONTH_01 + ( i - 1 ) * 4;
+    uint8_t flag_address  = ADDRESS_MONTH_FLAG_BASE + ( i - 1 );
+    if (get_Byte(flag_address) == FLAG_VALID)
+    {
+      get_My_4_bytes( month_address, month_start_count );
+      month_consumption = ( new_count >= month_start_count ) ? ( new_count - month_start_count ) * liter_per_count : 0;
+    }
+    else
+    {
+      month_consumption = 0;
+    }
+    value3 = value3 + ';' + String( i ) + ';' + String( month_consumption );
+  }
 
-      if (get_Byte(flag_address) == FLAG_VALID)
-      {
-        get_My_4_bytes( month_address, month_start_count );
-        month_consumption = ( new_count >= month_start_count ) ? ( new_count - month_start_count ) * liter_per_count : 0;
-      }
-      else
-      {
-        month_consumption = 0;
-      }
-
-      value3 = value3 + ';' + String( i ) + ';' + String( month_consumption );
-   }
-
-   publish_topic( "month_data", value3 );
-   MQTT_command  = "";
+  publish_topic( "month_data", value3 );
+  MQTT_command  = "";
 }
 
+// Save period start
 void set_period( )
 {
-   uint32_t cmd_data  = 0;
-   String   value3;
-
-   if ( MQTT_command.indexOf(',') > 0 )
-   {
-      value3    = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
-      cmd_data  = value3.toInt();
-   }
-   if ( set_My_4_bytes( ADDRESS_START_PERIOD, cmd_data ) == false )
-   {
-      logprint( "Failed to save Start Period %lu\n\r", cmd_data );
-   }
-   set_Byte(ADDRESS_START_PERIOD_FLAG, FLAG_VALID);
-   start_period = cmd_data;
-   MQTT_command = "";
+  uint32_t cmd_data = 0;
+  String value3;
+  if ( MQTT_command.indexOf(',') > 0 )
+  {
+    value3 = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
+    cmd_data = value3.toInt();
+  }
+  set_My_4_bytes( ADDRESS_START_PERIOD, cmd_data );
+  set_Byte(ADDRESS_START_PERIOD_FLAG, FLAG_VALID);
+  start_period = cmd_data;
+  MQTT_command = "";
 }
 
+// Save meter start
 void set_start( )
 {
-   uint32_t cmd_data  = 0;
-   String   value3;
-
-   if ( MQTT_command.indexOf(',') > 0 )
-   {
-      value3    = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
-      cmd_data  = value3.toInt();
-   }
-   if ( set_My_4_bytes( ADDRESS_START_METER, cmd_data ) == false )
-   {
-      logprint( "Failed to save Start Period %lu\n\r", cmd_data );
-   }
-   set_Byte(ADDRESS_START_METER_FLAG, FLAG_VALID);
-   start_consumption = cmd_data;
-   MQTT_command = "";
+  uint32_t cmd_data = 0;
+  String value3;
+  if ( MQTT_command.indexOf(',') > 0 )
+  {
+    value3 = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
+    cmd_data = value3.toInt();
+  }
+  set_My_4_bytes( ADDRESS_START_METER, cmd_data );
+  set_Byte(ADDRESS_START_METER_FLAG, FLAG_VALID);
+  start_consumption = cmd_data;
+  MQTT_command = "";
 }
 
-void init_counter_and_data( )
+// Initialize counter and optionally save a meter offset
+void init_counter_and_data()
 {
-   uint32_t cmd_data  = 0;
-   String   value3;
+  uint32_t cmd_data = 0;
+  String value3;
 
-   Init_counter( );
+  init_counter();
 
-   if ( MQTT_command.indexOf(',') > 0 )
-   {
-      value3    = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
-      cmd_data  = value3.toInt();
-   }
+  if (MQTT_command.indexOf(',') > 0)
+  {
+    value3 = MQTT_command.substring(MQTT_command.indexOf(',') + 1);
+    cmd_data = value3.toInt();
+  }
 
-   if ( set_My_4_bytes( ADDRESS_START_METER, cmd_data ) == false )
-   {
-      logprint( "Failed to save Start Consumption %lu\n\r", cmd_data );
-   }
-
-   set_Byte(ADDRESS_START_METER_FLAG, FLAG_VALID);
-   start_consumption = cmd_data;
-
-   set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
-   set_Byte(ADDRESS_DAY_INITIALIZED, 0);
-   day_start_count = 0;
-   day_initialized = 0;
-
-   MQTT_command = "";
+  set_My_4_bytes(ADDRESS_START_METER, cmd_data);
+  set_Byte(ADDRESS_START_METER_FLAG, FLAG_VALID);
+  start_consumption = cmd_data;
+  MQTT_command = "";
 }
 
+// Save month data from MQTT
 void set_month_data( )
 {
-   uint32_t cmd_data    = 0;
-   uint8_t  cmd_month   = 0;
-   uint8_t  cmd_address = 0;
-   String   value2;
-   String   value3;
+  uint32_t cmd_data = 0;
+  uint8_t  cmd_month = 0;
+  uint8_t  cmd_address = 0;
+  String value2;
+  String value3;
 
-   value2    = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
-   cmd_month = value2.toInt();
+  value2    = MQTT_command.substring( MQTT_command.indexOf(',') + 1);
+  cmd_month = value2.toInt();
 
-   if (( MQTT_command.indexOf(',') > 0   ) &&
-       ( cmd_month                       > 0   ) &&
-       ( cmd_month                       <= 12 ))
-   {
-      cmd_data     = 0;
-      if ( MQTT_command.indexOf(';') > 0 )
-      {
-         value3    = MQTT_command.substring( MQTT_command.indexOf(';') + 1);
-         cmd_data  = value3.toInt();
-      }
-      cmd_address  = ADDRESS_MONTH_01  + ( cmd_month - 1 ) * 4;
-      set_My_4_bytes( cmd_address, cmd_data );
-      set_Byte(ADDRESS_MONTH_FLAG_BASE + (cmd_month - 1), FLAG_VALID);
-   }
+  if (( MQTT_command.indexOf(',') > 0 ) &&
+      ( cmd_month > 0 ) &&
+      ( cmd_month <= 12 ))
+  {
+    cmd_data = 0;
+    if ( MQTT_command.indexOf(';') > 0 )
+    {
+      value3 = MQTT_command.substring( MQTT_command.indexOf(';') + 1);
+      cmd_data = value3.toInt();
+    }
+    cmd_address  = ADDRESS_MONTH_01  + ( cmd_month - 1 ) * 4;
+    set_My_4_bytes( cmd_address, cmd_data );
+    set_Byte(ADDRESS_MONTH_FLAG_BASE + (cmd_month - 1), FLAG_VALID);
+  }
 
-   publish_month( );
-   delay( 3000 );
-   MQTT_command = "";
+  publish_month( );
+  delay( 3000 );
+  MQTT_command = "";
 }
 
+// Parse incoming MQTT commands
 void command_parser()
 {
-  if ( MQTT_command.indexOf( "Month" ) >= 0 )
-  {
-    publish_month( );
-  }
-
-  if ( MQTT_command.indexOf( "InitP" ) >= 0 )
-  {
-    set_period( );
-  }
-
-  if ( MQTT_command.indexOf( "InitS" ) >= 0 )
-  {
-    set_start( );
-  }
-
-  if ( MQTT_command.indexOf( "InitM" ) >= 0 )
-  {
-    set_month_data( );
-  }
-
-  if ( MQTT_command.indexOf( "InitC" ) >= 0 )
-  {
-    init_counter_and_data( );
-  }
+  if ( MQTT_command.indexOf( "Month" ) >= 0 ) publish_month();
+  if ( MQTT_command.indexOf( "InitP" ) >= 0 ) set_period();
+  if ( MQTT_command.indexOf( "InitS" ) >= 0 ) set_start();
+  if ( MQTT_command.indexOf( "InitM" ) >= 0 ) set_month_data();
+  if ( MQTT_command.indexOf( "InitC" ) >= 0 ) init_counter_and_data();
+  if ( MQTT_command.indexOf( "InitD" ) >= 0 ) init_day_counter();
 }
 
+// Initialize hardware, netzwork, MQTT, OTA and RAM-values
 void setup()
 {
   Serial.begin(115200);
   delay(1000);
   pinMode(RESET_PIN, INPUT_PULLUP);
   pinMode(UPDATE_PIN, INPUT_PULLUP);
-  logprint("\r\nStarting Test!\r\n");
 
   Wire.setClock(50000);
   Wire.begin();
 
   Gas_WiFi_connect();
-  delay(1000);
-  logprint("\r\nConnected to WiFi!\r\n");
-
   begin_time();
-  logprint("Setup: Time = %02d.%02d.%04d %02d:%02d:%02d\n\r",
-         Gas_day, Gas_month, Gas_year, Gas_hour, Gas_min, Gas_sec);
 
-  delay(1000);
+#ifdef THINGSPEAK
+  ThingSpeak.begin(client1);
+#endif
 
-  #ifdef THINGSPEAK
-    ThingSpeak.begin(client1);
-  #endif
-
+  // Optional hardware reset
   if (digitalRead(RESET_PIN) == 0)
   {
-    logprint("\r\nClear RTC Data in RAM!\r\n");
-    Init_counter();
+    init_counter();
     set_Byte(ADDRESS_DAY_INITIALIZED, 0);
+    set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
   }
 
   setup_MQTT();
@@ -608,88 +572,41 @@ void setup()
   if (get_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count) != true)
     day_start_count = 0;
 
-  uint8_t ram_day, ram_month;
-  uint16_t ram_year;
-  get_Date(ADDRESS_DAY_DATE, ram_day, ram_month, ram_year);
-
   day_initialized = get_Byte(ADDRESS_DAY_INITIALIZED);
-
-  logprint("\r\nsetup: day_initialized=%d, day_start_count=%lu, ram_date=%02d.%02d.%04d\n\r",
-           day_initialized, day_start_count, ram_day, ram_month, ram_year);
 
   if (day_initialized == 0)
   {
-    uint32_t initial_count = 0;
-    if (get_Counter(ADDRESS_COUNTER, initial_count) == true)
-      day_start_count = initial_count;
-    else
-      day_start_count = 0;
-
-    set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
-    set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
-    set_Byte(ADDRESS_DAY_INITIALIZED, 1);
-
-    logprint("\r\nFirst init: day_start_count = %lu, day = %02d.%02d.%04d\n\r",
-              day_start_count, Gas_day, Gas_month, Gas_year);
-  }
-  else
-  {
-    if ((ram_day != Gas_day) || (ram_month != Gas_month) || (ram_year != Gas_year))
-    {
-      logprint("\r\nsetup: Day change detected before first loop: old=%02d.%02d.%04d new=%02d.%02d.%04d\n\r",
-               ram_day, ram_month, ram_year, Gas_day, Gas_month, Gas_year);
-
-      uint32_t current_count = 0;
-      if (get_Counter(ADDRESS_COUNTER, current_count) == true)
-        day_start_count = current_count;
-      else
-        day_start_count = 0;
-
-      set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
-      set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
-
-      logprint("\r\nsetup: day_start_count updated to %lu\n\r", day_start_count);
-    }
+    init_day_counter();
+    day_initialized = 1;
   }
 
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname("Gascounter");
   ArduinoOTA.setPasswordHash("8839735356e0412c4735811c23214209");
-
-  ArduinoOTA.onStart([]()
-  {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH)
-      type = "sketch";
-    else
-      type = "filesystem";
-    Serial.println("Starting update" + type);
-  });
-
-  ArduinoOTA.onEnd([]()
-  {
-    Serial.println("\nEnd");
-  });
-
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-
   ArduinoOTA.begin();
 }
 
+// Publish debug values for MQTT monitoring
+void publish_debug_topics(const char* tag)
+{
+  char buf[32];
+  publish_topic(MQTT_DEBUG_NEW_COUNT, String(new_count));
+  publish_topic(MQTT_DEBUG_DAY_START_COUNT, String(day_start_count));
+  publish_topic(MQTT_DEBUG_DAILY_COUNT, String(daily_count));
+  publish_topic(MQTT_DEBUG_DAY_INIT, String(day_initialized));
+  snprintf(buf, sizeof(buf), "%02d.%02d.%04d", Gas_day, Gas_month, Gas_year);
+  publish_topic(MQTT_DEBUG_DATE, buf);
+  snprintf(buf, sizeof(buf), "%02d:%02d:%02d", Gas_hour, Gas_min, Gas_sec);
+  publish_topic(MQTT_DEBUG_TIME, buf);
+  publish_topic(MQTT_DEBUG_TAG, String(tag));
+}
+
+// It reads the counter, updates daily/monthly values, publishes data, and then goes to sleep
 void loop()
 {
   mqtt.loop();
+  ArduinoOTA.handle();   // keep OTA responsive
+
   error = false;
 
   if (WiFi.status() != WL_CONNECTED)
@@ -701,93 +618,51 @@ void loop()
   if (get_My_4_bytes(ADDRESS_OLD_COUNTER, old_count) != true)
     old_count = 0;
 
-  bool counter_ok = get_Counter(ADDRESS_COUNTER, new_count);
-  if (counter_ok != true)
+  if (get_Counter(ADDRESS_COUNTER, new_count) != true)
   {
     error = true;
     new_count = 0;
   }
 
-  logprint("***  New Count %10d Old Count %10d\n\r", new_count, old_count);
-
   if (!get_LocalTime())
   {
-    logprint("ERROR: Failed to get local time, skipping this loop\n\r");
-    ArduinoOTA.handle();
     return;
   }
 
-  logprint("Datum %02d.%02d.%04d Uhrzeit  %02d:%02d:%02d\n\r",
-           Gas_day, Gas_month, Gas_year, Gas_hour, Gas_min, Gas_sec);
-
-  uint8_t old_day_ram, old_month_ram;
-  uint16_t old_year_ram;
-  get_Date(ADDRESS_DAY_DATE, old_day_ram, old_month_ram, old_year_ram);
-
-  Serial.print("RAM date: "); Serial.print(old_day_ram);
-  Serial.print("."); Serial.print(old_month_ram);
-  Serial.print("."); Serial.println(old_year_ram);
-
-  if ((Gas_day != old_day_ram) || (Gas_month != old_month_ram) || (Gas_year != old_year_ram))
+  // Manual daily reset: count from reset point until first increment, then continue normally
+  if (manual_reset_active)
   {
-    logprint("Day change detected: old=%02d.%02d.%04d new=%02d.%02d.%04d\n\r",
-             old_day_ram, old_month_ram, old_year_ram,
-             Gas_day, Gas_month, Gas_year);
-
-    day_start_count = new_count;
-    set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
-    set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
-
-    logprint("Day change: day_start_count = %lu, new_count = %lu\n\r",
-             day_start_count, new_count);
+    daily_count = (new_count >= manual_day_start) ? (new_count - manual_day_start) : 0;
   }
   else
   {
-    Serial.print("NO day change: day_start_count="); Serial.println(day_start_count);
-    Serial.print("NO day change: new_count="); Serial.println(new_count);
-  }
+    // Normal daily reset at day change only
+    uint8_t stored_day = 0, stored_month = 0;
+    uint16_t stored_year = 0;
+    get_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
 
-  if (new_count >= day_start_count)
-  {
-    daily_count = new_count - day_start_count;
-  }
-  else
-  {
-    logprint("Counter reset detected: new_count=%lu < day_start_count=%lu\n\r",
-             new_count, day_start_count);
-    day_start_count = new_count;
-    set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
-    daily_count = 0;
+    if ((Gas_day != stored_day) || (Gas_month != stored_month) || (Gas_year != stored_year))
+    {
+      day_start_count = new_count;
+      set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
+      set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
+    }
+
+    daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
   }
 
   daily_consumption_l = daily_count * liter_per_count;
   daily_volume_m3     = daily_count * mexp3_per_count;
   daily_energy_kWh    = daily_count * mexp3_per_count * brennwert * zustandszahl;
 
-  if (set_My_4_bytes(ADDRESS_OLD_COUNTER, new_count) == false)
-  {
-    logprint("Failed to save New to Old Count ***  New Count %10d Old Count %10d\n\r",
-             new_count, old_count);
-  }
+  publish_debug_topics("after_daily_calc");
 
+  // Save previous counter/time/date for the next loop iteration
+  set_My_4_bytes(ADDRESS_OLD_COUNTER, new_count);
   get_Time(ADDRESS_OLD_TIME, old_hour, old_min, old_sec);
+  set_Time(ADDRESS_OLD_TIME, Gas_hour, Gas_min, Gas_sec);
 
-  if (set_Time(ADDRESS_OLD_TIME, Gas_hour, Gas_min, Gas_sec) == false)
-  {
-    logprint("Failed to save New to Time ***  New Time %02d:%02d:%02d\n\r",
-             Gas_hour, Gas_min, Gas_sec);
-  }
-
-  uint8_t old_day_tmp, old_month_tmp;
-  uint16_t old_year_tmp;
-  get_Date(ADDRESS_OLD_DATE, old_day_tmp, old_month_tmp, old_year_tmp);
-
-  if (set_month(Gas_month, new_count) == false)
-  {
-    logprint("Failed to save monthly data Gas_month %02d New Count:%06d\n\r",
-             Gas_month, new_count);
-  }
-
+  set_month(Gas_month, new_count);
   set_Date(ADDRESS_OLD_DATE, Gas_day, Gas_month, Gas_year);
 
   period = (Gas_hour - old_hour) * 3600L +
@@ -802,10 +677,6 @@ void loop()
              (old_min) * 60 +
              (old_sec);
 
-  logprint("Old Time %02d:%02d:%02d New Time %02d:%02d:%02d Period %10d\n\r",
-           old_hour, old_min, old_sec, Gas_hour, Gas_min, Gas_sec, period);
-  logprint("Old Time %08d New time %06d  in seconds\n\r", old_time, new_time);
-
   delta_count = new_count - old_count;
 
   consumption = (start_consumption + new_count * liter_per_count) / 1000.0;
@@ -819,15 +690,13 @@ void loop()
   dtostrf(3600L / (new_time - old_time) * energy1, 12, 3, valueString5);
   dtostrf(start_consumption / 1000.0, 12, 3, valueString6);
   dtostrf(start_period / 1000.0, 12, 3, valueString7);
-
   dtostrf(daily_consumption_l, 12, 0, valueString9);
   dtostrf(daily_volume_m3, 12, 3, valueString10);
   dtostrf(daily_energy_kWh, 12, 3, valueString11);
-
   sprintf(valueString8, "%02d:%02d:%02d", Gas_hour, Gas_min, Gas_sec);
 
+  // Publish to Thingspeak
   #ifdef THINGSPEAK
-  {
     ThingSpeak.setField(1, valueString1);
     ThingSpeak.setField(2, valueString2);
     ThingSpeak.setField(3, valueString3);
@@ -837,34 +706,27 @@ void loop()
     ThingSpeak.setField(7, valueString10);
     ThingSpeak.setField(8, valueString11);
     Send_data();
-  }
   #endif
 
-  {
-    publish_topic("Time",          valueString8);
-    publish_topic("Total_kWh",     valueString1);
-    publish_topic("Power_kW",      valueString5);
-    publish_topic("Counts",        valueString4);
-    publish_topic("Volume",        valueString3);
-    publish_topic("Start",         valueString6);
-    publish_topic("Period_Start",  valueString7);
-    publish_topic("Daily_Liter",   valueString9);
-    publish_topic("Daily_m3",      valueString10);
-    publish_topic("Daily_kWh",     valueString11);
-    publish_topic("Status", error == true ? "Error" : "OK");
-  }
+  publish_topic("Time",         valueString8);
+  publish_topic("Total_kWh",    valueString1);
+  publish_topic("Power_kW",     valueString5);
+  publish_topic("Counts",       valueString4);
+  publish_topic("Volume",       valueString3);
+  publish_topic("Start",        valueString6);
+  publish_topic("Period_Start", valueString7);
+  publish_topic("Daily_Liter",   valueString9);
+  publish_topic("Daily_m3",      valueString10);
+  publish_topic("Daily_kWh",     valueString11);
+  publish_topic("Status",        error == true ? "Error" : "OK");
 
   if (digitalRead(UPDATE_PIN) == 1)
   {
-    logprint("Going to sleep\n");
     delay(1000);
     ESP.deepSleep(111 * 1000 * 1000);
   }
   else
   {
-    logprint("Waiting 30 seconds\n");
     delay(30000);
   }
-
-  ArduinoOTA.handle();
 }
