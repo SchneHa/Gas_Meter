@@ -1,7 +1,8 @@
 /**************************************************************************/
 /*
   Gas counter using RTC as counter and storing values in RAM
-  (c) Hans Schneider 2026 V1.4.1
+  (c) Hans Schneider 2026 
+  V1.4.1
   forked from /Rainer-G/Gas_Meter
   Board: Lolin(Wemos) D1 R2 & mini oder D1 mini pro
 */
