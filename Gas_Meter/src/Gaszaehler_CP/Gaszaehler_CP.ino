@@ -86,9 +86,11 @@ double    daily_volume_m3     = 0;
 double    daily_energy_kWh    = 0;
 uint8_t   day_initialized     = 0;
 
-// Manual reset handling for InitD
-uint32_t  manual_day_start    = 0;      // anchor for manual reset
-bool      manual_reset_active  = false; // true until first increment after InitD
+#define ADDRESS_DAY_STATE          ADDRESS_DAY_INITIALIZED + 1   // new: day state
+#define DAY_STATE_NORMAL           0
+#define DAY_STATE_MANUAL_RESET     1
+
+uint8_t   day_state = DAY_STATE_NORMAL;
 
 char      valueString1[ 80 ];
 char      valueString2[ 80 ];
@@ -379,11 +381,9 @@ void init_counter()
   set_Time( ADDRESS_OLD_TIME, Gas_hour, Gas_min, Gas_sec );
 }
 
-// Manual daily reset: start counting from zero again
 void init_day_counter()
 {
-  manual_day_start   = new_count;
-  manual_reset_active = true;
+  day_state = DAY_STATE_MANUAL_RESET;
 
   day_start_count = 0;
   daily_count = 0;
@@ -394,6 +394,7 @@ void init_day_counter()
   set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
   set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
   set_Byte(ADDRESS_DAY_INITIALIZED, 1);
+  set_Byte(ADDRESS_DAY_STATE, DAY_STATE_MANUAL_RESET);
 
   publish_topic("debug/day_start_count", "0");
   publish_topic("debug/daily_count", "0");
@@ -605,6 +606,7 @@ void setup()
     init_counter();
     // Beim kompletten Reset auch Initialisierungs-Flag zurücksetzen
     set_Byte(ADDRESS_DAY_INITIALIZED, 0);
+    set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
     set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
   }
 
@@ -624,11 +626,13 @@ void setup()
     day_start_count = 0;
 
   day_initialized = get_Byte(ADDRESS_DAY_INITIALIZED);
+  day_state = get_Byte(ADDRESS_DAY_STATE);
 
-  if (day_initialized == 0)
+  if ((day_initialized == 0) || (day_state > DAY_STATE_MANUAL_RESET))
   {
     init_day_counter();
     day_initialized = 1;
+    day_state = DAY_STATE_MANUAL_RESET;
   }
 
   // Initialise OTA
@@ -691,18 +695,24 @@ void loop()
     return;
   }
 
-  // Manual daily reset: count from reset point until first increment, then continue normally
-  if (manual_reset_active)
+  uint8_t stored_day   = 0, stored_month = 0;
+  uint16_t stored_year = 0;
+  get_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
+
+  if (day_state == DAY_STATE_MANUAL_RESET)
   {
-    daily_count = (new_count >= manual_day_start) ? (new_count - manual_day_start) : 0;
+    if (new_count >= day_start_count)
+    {
+      day_start_count = new_count;
+      set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
+      set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
+      day_state = DAY_STATE_NORMAL;
+      set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
+    }
+    daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
   }
   else
   {
-    // Normal daily reset at day change only
-    uint8_t stored_day = 0, stored_month = 0;
-    uint16_t stored_year = 0;
-    get_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
-
     if ((Gas_day != stored_day) || (Gas_month != stored_month) || (Gas_year != stored_year))
     {
       day_start_count = new_count;
@@ -741,7 +751,7 @@ void loop()
 
   delta_count = new_count - old_count;
 
-  consumption = (start_consumption + new_count * liter_per_count) / 1000.0;
+  consumption  = (start_consumption + new_count * liter_per_count) / 1000.0;
   total_energy = consumption * brennwert * zustandszahl;
   energy1      = (double)delta_count * (double)mexp3_per_count * brennwert * zustandszahl;
 
@@ -770,13 +780,13 @@ void loop()
     Send_data();
   #endif
 
-  publish_topic("Time",         valueString8);
-  publish_topic("Total_kWh",    valueString1);
-  publish_topic("Power_kW",     valueString5);
-  publish_topic("Counts",       valueString4);
-  publish_topic("Volume",       valueString3);
-  publish_topic("Start",        valueString6);
-  publish_topic("Period_Start", valueString7);
+  publish_topic("Time",          valueString8);
+  publish_topic("Total_kWh",     valueString1);
+  publish_topic("Power_kW",      valueString5);
+  publish_topic("Counts",        valueString4);
+  publish_topic("Volume",        valueString3);
+  publish_topic("Start",         valueString6);
+  publish_topic("Period_Start",  valueString7);
   publish_topic("Daily_Liter",   valueString9);
   publish_topic("Daily_m3",      valueString10);
   publish_topic("Daily_kWh",     valueString11);
