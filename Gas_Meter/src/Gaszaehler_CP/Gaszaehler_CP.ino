@@ -385,18 +385,18 @@ void init_day_counter()
 {
   day_state = DAY_STATE_MANUAL_RESET;
 
-  day_start_count = 0;
+  day_start_count = new_count;
   daily_count = 0;
   daily_consumption_l = 0;
   daily_volume_m3 = 0;
   daily_energy_kWh = 0;
 
-  set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
+  set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
   set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
   set_Byte(ADDRESS_DAY_INITIALIZED, 1);
   set_Byte(ADDRESS_DAY_STATE, DAY_STATE_MANUAL_RESET);
 
-  publish_topic("debug/day_start_count", "0");
+  publish_topic("debug/day_start_count", String(day_start_count));
   publish_topic("debug/daily_count", "0");
   publish_topic("debug/day_initialized", "1");
 
@@ -625,15 +625,18 @@ void setup()
   if (get_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count) != true)
     day_start_count = 0;
 
-  day_initialized = get_Byte(ADDRESS_DAY_INITIALIZED);
-  day_state = get_Byte(ADDRESS_DAY_STATE);
+day_initialized = get_Byte(ADDRESS_DAY_INITIALIZED);
+day_state = get_Byte(ADDRESS_DAY_STATE);
 
-  if ((day_initialized == 0) || (day_state > DAY_STATE_MANUAL_RESET))
-  {
-    init_day_counter();
-    day_initialized = 1;
-    day_state = DAY_STATE_MANUAL_RESET;
-  }
+if (day_initialized == 0)
+{
+  init_day_counter();
+  day_initialized = 1;
+}
+else
+{
+  day_state = DAY_STATE_NORMAL;
+}
 
   // Initialise OTA
   ArduinoOTA.setPort(8266);
@@ -646,8 +649,8 @@ void setup()
   //                                          H A S H E D  PWD                                       *
   //**************************************************************************************************
   //           Das hashed pwd kann zum Beispiel gebildet werden über den Hash-Generator              *
-  //                                  https://hash-generieren.de/                                    *
-  //                               https://www.md5hashgenerator.com/                                 *
+  //                                https://hash-generieren.de/                                      *
+  //                             https://www.md5hashgenerator.com/                                   *
   //                    https://www.hexhero.com/tools/sha256-hash-generator                          *
   //**************************************************************************************************
   //
@@ -699,29 +702,26 @@ void loop()
   uint16_t stored_year = 0;
   get_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
 
-  if (day_state == DAY_STATE_MANUAL_RESET)
+if (day_state == DAY_STATE_MANUAL_RESET)
+{
+  if (day_start_count == 0)
   {
-    if (new_count >= day_start_count)
-    {
-      day_start_count = new_count;
-      set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
-      set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
-      day_state = DAY_STATE_NORMAL;
-      set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
-    }
-    daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
+    day_start_count = new_count;
+    set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
   }
-  else
-  {
-    if ((Gas_day != stored_day) || (Gas_month != stored_month) || (Gas_year != stored_year))
-    {
-      day_start_count = new_count;
-      set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
-      set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
-    }
 
-    daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
+  if (new_count >= day_start_count)
+  {
+    day_state = DAY_STATE_NORMAL;
+    set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
   }
+
+  daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
+}
+else
+{
+  daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
+}
 
   daily_consumption_l = daily_count * liter_per_count;
   daily_volume_m3     = daily_count * mexp3_per_count;
