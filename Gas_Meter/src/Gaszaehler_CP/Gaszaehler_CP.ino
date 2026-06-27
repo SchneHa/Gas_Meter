@@ -792,7 +792,20 @@ else
   publish_topic("Daily_kWh",     valueString11);
   publish_topic("Status",        error == true ? "Error" : "OK");
 
-  if (digitalRead(UPDATE_PIN) == 1)
+
+  bool sleep_blocked = false;
+
+  for (uint8_t i = 0; i < 20; i++)
+  {
+    if (digitalRead(UPDATE_PIN) == LOW)
+    {
+      sleep_blocked = true;
+      break;
+    }
+    delay(50);
+  }
+
+  if (!sleep_blocked)
   {
     delay(1000);
     ESP.deepSleep(111 * 1000 * 1000);
