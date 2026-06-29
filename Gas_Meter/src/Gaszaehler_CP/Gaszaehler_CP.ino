@@ -299,6 +299,7 @@ bool set_Time( int8_t address, uint8_t o_hour, uint8_t o_min, uint8_t o_sec )   
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+// Check of plausibility
 bool validDate(uint8_t d, uint8_t m, uint16_t y)
 {
   return (d >= 1 && d <= 31 && m >= 1 && m <= 12 && y >= 2000 && y <= 2099);
@@ -398,6 +399,7 @@ void init_day_counter()
   daily_energy_kWh = 0;
 
   set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
+  // Check of plausibility
   if (validDate(Gas_day, Gas_month, Gas_year))
   {
     set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
@@ -716,6 +718,7 @@ void loop()
 
   get_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
 
+  // Restore valid values if stored values are corrupt
   if (stored_month < 1 || stored_month > 12 || stored_day < 1 || stored_day > 31)
   {
     stored_day = Gas_day;
@@ -742,8 +745,10 @@ void loop()
   }
   else
   {
+    // Correction of any implausible condition 
     if (day_start_count > new_count)
     day_start_count = new_count;
+    // 
     daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
 //    publish_topic("debug/daily_count", "else-Zweig");
   }
