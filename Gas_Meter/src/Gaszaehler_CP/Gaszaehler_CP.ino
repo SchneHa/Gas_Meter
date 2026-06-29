@@ -3,6 +3,7 @@
   Gas counter using RTC as counter and storing values in RAM
   (c) Hans Schneider 2026 
   V1.4.1
+  29.06.2026
   forked from /Rainer-G/Gas_Meter
   Board: Lolin(Wemos) D1 R2 & mini oder D1 mini pro
 */
@@ -298,6 +299,11 @@ bool set_Time( int8_t address, uint8_t o_hour, uint8_t o_min, uint8_t o_sec )   
   return ( Wire.endTransmission( true ) == 0 );
 }
 
+bool validDate(uint8_t d, uint8_t m, uint16_t y)
+{
+  return (d >= 1 && d <= 31 && m >= 1 && m <= 12 && y >= 2000 && y <= 2099);
+}
+
 // Write date to RTC RAM
 bool set_Date( int8_t address, uint8_t day, uint8_t month, int year )
 {
@@ -392,7 +398,10 @@ void init_day_counter()
   daily_energy_kWh = 0;
 
   set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
-  set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
+  if (validDate(Gas_day, Gas_month, Gas_year))
+  {
+    set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
+  }
   set_Byte(ADDRESS_DAY_INITIALIZED, 1);
   set_Byte(ADDRESS_DAY_STATE, DAY_STATE_MANUAL_RESET);
 
@@ -607,7 +616,7 @@ void setup()
     // Beim kompletten Reset auch Initialisierungs-Flag zurücksetzen
     set_Byte(ADDRESS_DAY_INITIALIZED, 0);
     set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
-    set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
+    //set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
   }
 
   // Setup MQTT Client
@@ -625,8 +634,11 @@ void setup()
   if (get_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count) != true)
     day_start_count = 0;
 
-day_initialized = get_Byte(ADDRESS_DAY_INITIALIZED);
-day_state = get_Byte(ADDRESS_DAY_STATE);
+  day_initialized = get_Byte(ADDRESS_DAY_INITIALIZED);
+  day_state = get_Byte(ADDRESS_DAY_STATE);
+
+//  if (day_state != DAY_STATE_MANUAL_RESET)
+//    day_state = DAY_STATE_NORMAL;
 
 if (day_initialized == 0)
 {
@@ -698,30 +710,43 @@ void loop()
     return;
   }
 
-  uint8_t stored_day   = 0, stored_month = 0;
+  uint8_t stored_day = 0;
+  uint8_t stored_month = 0;
   uint16_t stored_year = 0;
+
   get_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
 
-if (day_state == DAY_STATE_MANUAL_RESET)
-{
-  if (day_start_count == 0)
+  if (stored_month < 1 || stored_month > 12 || stored_day < 1 || stored_day > 31)
+  {
+    stored_day = Gas_day;
+    stored_month = Gas_month;
+    stored_year = Gas_year;
+    set_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
+  }
+
+  if (day_initialized == 0)
+  {
+    set_Byte(ADDRESS_DAY_INITIALIZED, 1);
+    set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
+    day_initialized = 1;
+    day_state = DAY_STATE_NORMAL;
+  }
+
+  if ((Gas_day != stored_day) || (Gas_month != stored_month) || (Gas_year != stored_year))
   {
     day_start_count = new_count;
+    daily_count = 0;
     set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
+    set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
+//    publish_topic("debug/daily_count", "if-Zweig");
   }
-
-  if (new_count >= day_start_count)
+  else
   {
-    day_state = DAY_STATE_NORMAL;
-    set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
+    if (day_start_count > new_count)
+    day_start_count = new_count;
+    daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
+//    publish_topic("debug/daily_count", "else-Zweig");
   }
-
-  daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
-}
-else
-{
-  daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
-}
 
   daily_consumption_l = daily_count * liter_per_count;
   daily_volume_m3     = daily_count * mexp3_per_count;
