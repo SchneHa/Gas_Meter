@@ -2,8 +2,8 @@
 /*
   Gas counter using RTC as counter and storing values in RAM
   (c) Hans Schneider 2026 
-  V1.4.1
-  29.06.2026
+  V1.4.2 (final compact DS1307 RAM layout)
+  30.06.2026
   forked from /Rainer-G/Gas_Meter
   Board: Lolin(Wemos) D1 R2 & mini oder D1 mini pro
 */
@@ -27,23 +27,25 @@
 #define COUNTER_ADDRESS            0x50                                   // 7 I²C bit address for RTC Chip
 #define CONTROL_ADDRESS            0x00
 #define ADDRESS_COUNTER            0x01                                   // only 3 bytes with 6 BCD digits
-// starting from 0x10, we have 240 bytes of RAM for free use
-#define RAM_OFFSET                 0x10
-#define ADDRESS_OLD_COUNTER        RAM_OFFSET                             // start after reserved RAM locations
-#define ADDRESS_OLD_TIME           ADDRESS_OLD_COUNTER      + 4           // provide 4 bytes
-#define ADDRESS_OLD_DATE           ADDRESS_OLD_TIME         + 4           // provide 4 bytes
-#define ADDRESS_START_METER        ADDRESS_OLD_DATE         + 4           // provide 4 bytes
-#define ADDRESS_START_PERIOD       ADDRESS_START_METER      + 4           // provide 4 bytes for meter data at first start
-#define ADDRESS_MONTH_01           ADDRESS_START_PERIOD     + 4           // provide 4 bytes for meter data for start of period
-
-#define ADDRESS_DAY_START_COUNT    ADDRESS_MONTH_01         + ( 4 * 12 )  // 12 months x 4 bytes
-#define ADDRESS_DAY_DATE           ADDRESS_DAY_START_COUNT  + 4           // new: daily start counter
-#define ADDRESS_DAY_INITIALIZED    ADDRESS_DAY_DATE         + 4           // new: day date
 
 #define FLAG_VALID                 0xA5
-#define ADDRESS_START_METER_FLAG   ADDRESS_START_METER      + 4
-#define ADDRESS_START_PERIOD_FLAG  ADDRESS_START_PERIOD     + 4
-#define ADDRESS_MONTH_FLAG_BASE    ADDRESS_MONTH_01         + (4 * 12)
+#define RAM_BASE                   0x08                                   // DS1307 free RAM: 0x08..0x3F
+
+#define ADDRESS_OLD_COUNTER        (RAM_BASE + 0)                         // 4 Byte
+
+#define ADDRESS_START_METER        (RAM_BASE + 4)                         // 4 Byte
+#define ADDRESS_START_METER_FLAG   (ADDRESS_START_METER + 4)
+
+#define ADDRESS_START_PERIOD       (RAM_BASE + 9)                         // 4 Byte
+#define ADDRESS_START_PERIOD_FLAG  (ADDRESS_START_PERIOD + 4)
+
+#define ADDRESS_DAY_START_COUNT    (RAM_BASE + 14)                        // 4 Byte
+#define ADDRESS_DAY_DATE           (RAM_BASE + 18)                        // 3 Byte
+#define ADDRESS_DAY_INITIALIZED    (RAM_BASE + 21)                        // 1 Byte
+#define ADDRESS_DAY_STATE          (RAM_BASE + 22)                        // 1 Byte
+
+#define ADDRESS_MONTHS_VALID       (RAM_BASE + 23)                        // 1 Byte
+#define ADDRESS_MONTH_01           (RAM_BASE + 24)                        // 12 x 2 Byte = 24 Byte
 
 #define MQTT_DEBUG_NEW_COUNT       "debug/new_count"
 #define MQTT_DEBUG_DAY_START_COUNT "debug/day_start_count"
@@ -70,24 +72,23 @@ double    brennwert           = 11.688629;        // 11.53800
 double    zustandszahl        = 0.93940;          // 0.93940
 uint16_t  year_offset         = 2000;
 
-float     energy1             = 0;                // 697557.89; current load in kWh  : Gas m³ * Brennwert * Zustandszahl
-double    total_energy        = 0;                // 697557.89; total usage  in kWh  : Gas m³ * Brennwert * Zustandszahl
+float     energy1             = 0;                // current load in kWh
+double    total_energy        = 0;                // total usage in kWh
 
-uint32_t  start_consumption   = 0;                // 64354.106; set after first start or battery change
-double    consumption         = 0;                // 64354106; Gas in liter
+uint32_t  start_consumption   = 0;                // set after first start or battery change
+double    consumption         = 0;                // Gas in liter
 uint32_t  start_period        = 0;                // Gas in liter
 uint32_t  period              = 0;                // in seconds
 
 String    consumption_string  = "";               // temp string for a monthly consumption
 
-uint32_t  day_start_count     = 0;      // start value for normal daily counting
-uint32_t  daily_count         = 0;      // calculated daily counter
+uint32_t  day_start_count     = 0;                // start value for normal daily counting
+uint32_t  daily_count         = 0;                // calculated daily counter
 double    daily_consumption_l = 0;
 double    daily_volume_m3     = 0;
 double    daily_energy_kWh    = 0;
 uint8_t   day_initialized     = 0;
 
-#define ADDRESS_DAY_STATE          ADDRESS_DAY_INITIALIZED + 1   // new: day state
 #define DAY_STATE_NORMAL           0
 #define DAY_STATE_MANUAL_RESET     1
 
@@ -244,7 +245,7 @@ bool get_My_4_bytes( int8_t address, uint32_t &value )
 bool get_Counter( int8_t address, uint32_t &count  )
 {
   count = 0;
-  Wire.beginTransmission( COUNTER_ADDRESS );               // stored as BCD digits in 3 bytes
+  Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
   Wire.endTransmission( );
   byte len = Wire.requestFrom( COUNTER_ADDRESS, 3 );
@@ -266,7 +267,7 @@ bool get_Counter( int8_t address, uint32_t &count  )
 }
 
 // Write counter value in BCD format
-bool set_Counter( int8_t address, int32_t value )            // store as BCD digits in 3 bytes
+bool set_Counter( int8_t address, int32_t value )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
@@ -277,7 +278,7 @@ bool set_Counter( int8_t address, int32_t value )            // store as BCD dig
 }
 
 // Read time from RTC RAM
-void get_Time( int8_t address, uint8_t &o_hour, uint8_t &o_min, uint8_t &o_sec )    // return 3 hex bytes
+void get_Time( int8_t address, uint8_t &o_hour, uint8_t &o_min, uint8_t &o_sec )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
@@ -289,7 +290,7 @@ void get_Time( int8_t address, uint8_t &o_hour, uint8_t &o_min, uint8_t &o_sec )
 }
 
 // Write time to RTC RAM
-bool set_Time( int8_t address, uint8_t o_hour, uint8_t o_min, uint8_t o_sec )            // store as 3 hex bytes
+bool set_Time( int8_t address, uint8_t o_hour, uint8_t o_min, uint8_t o_sec )
 {
   Wire.beginTransmission( COUNTER_ADDRESS );
   Wire.write( address );
@@ -313,7 +314,7 @@ bool set_Date( int8_t address, uint8_t day, uint8_t month, int year )
   Wire.write( day );
   Wire.write( month );
   year = year - year_offset;
-  Wire.write( year );
+  Wire.write( (uint8_t)year );
   return ( Wire.endTransmission( true ) == 0 );
 }
 
@@ -324,9 +325,25 @@ void get_Date( int8_t address, uint8_t &day, uint8_t &month, uint16_t &year )
   Wire.write( address );
   Wire.endTransmission();
   Wire.requestFrom( COUNTER_ADDRESS, 3 );
-  day   = Wire.read();                       // get day
-  month = Wire.read();                       // get month
-  year  = Wire.read() + year_offset;         // get year (uint16_t!)
+  day   = Wire.read();
+  month = Wire.read();
+  year  = Wire.read() + year_offset;
+}
+
+// Check if months are valid
+bool months_valid()
+{
+  return get_Byte(ADDRESS_MONTHS_VALID) == FLAG_VALID;
+}
+
+void set_months_valid(bool ok)
+{
+  set_Byte(ADDRESS_MONTHS_VALID, ok ? FLAG_VALID : 0x00);
+}
+
+bool valid_month_value(uint16_t value)
+{
+  return value <= 60000;
 }
 
 // Write 4-byte value and flag
@@ -350,13 +367,27 @@ bool get_My_4_bytes_with_flag(int8_t address, int8_t flag_address, uint32_t &val
 }
 
 // Save the start count for a month
-bool set_month( int8_t month, uint32_t current_count )
+bool set_month(int8_t month, uint16_t current_count)
 {
-  uint8_t month_address = ADDRESS_MONTH_01 + ( month - 1 ) * 4;
-  uint8_t flag_address  = ADDRESS_MONTH_FLAG_BASE + ( month - 1 );
-  if (!set_My_4_bytes(month_address, current_count))
-    return false;
-  return set_Byte(flag_address, FLAG_VALID);
+  if (month < 1 || month > 12) return false;
+  uint8_t month_address = ADDRESS_MONTH_01 + (month - 1) * 2;
+  bool ok = set_Integer(month_address, (int16_t)current_count);
+  if (ok) set_months_valid(true);
+  return ok;
+}
+
+// Read the start count for a month
+bool get_month(int8_t month, uint16_t &current_count)
+{
+  if (month < 1 || month > 12) return false;
+  if (!months_valid()) return false;
+
+  uint8_t month_address = ADDRESS_MONTH_01 + (month - 1) * 2;
+  int16_t tmp = 0;
+  if (!get_Integer(month_address, tmp)) return false;
+
+  current_count = (uint16_t)tmp;
+  return valid_month_value(current_count);
 }
 
 //
@@ -385,9 +416,9 @@ void init_counter()
   set_Counter_Mode();
   set_Counter( ADDRESS_COUNTER, 0 );
   set_My_4_bytes( ADDRESS_OLD_COUNTER, 0 );
-  set_Time( ADDRESS_OLD_TIME, Gas_hour, Gas_min, Gas_sec );
 }
 
+// Initialize the day counter
 void init_day_counter()
 {
   day_state = DAY_STATE_MANUAL_RESET;
@@ -399,6 +430,7 @@ void init_day_counter()
   daily_energy_kWh = 0;
 
   set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
+
   // Check of plausibility
   if (validDate(Gas_day, Gas_month, Gas_year))
   {
@@ -421,7 +453,7 @@ void publish_month( )
   uint8_t  cmd_value = 0;
   uint8_t  cmd_start = 0;
   uint8_t  cmd_end   = 0;
-  uint32_t month_start_count = 0;
+  uint16_t month_start_count = 0;
   uint32_t month_consumption = 0;
   String   value3;
 
@@ -443,11 +475,8 @@ void publish_month( )
 
   for ( int i = cmd_start; i <= cmd_end; i++ )
   {
-    uint8_t month_address = ADDRESS_MONTH_01 + ( i - 1 ) * 4;
-    uint8_t flag_address  = ADDRESS_MONTH_FLAG_BASE + ( i - 1 );
-    if (get_Byte(flag_address) == FLAG_VALID)
+    if ( get_month(i, month_start_count) )
     {
-      get_My_4_bytes( month_address, month_start_count );
       month_consumption = ( new_count >= month_start_count ) ? ( new_count - month_start_count ) * liter_per_count : 0;
     }
     else
@@ -462,7 +491,7 @@ void publish_month( )
 }
 
 // Save period start
-void set_period( )                           // set start value for heating period
+void set_period( )
 {
   uint32_t cmd_data = 0;
   String value3;
@@ -478,7 +507,7 @@ void set_period( )                           // set start value for heating peri
 }
 
 // Save meter start
-void set_start( )                           // set start value
+void set_start( )
 {
   uint32_t cmd_data = 0;
   String value3;
@@ -494,7 +523,7 @@ void set_start( )                           // set start value
 }
 
 // Initialize counter and optionally save a meter offset
-void init_counter_and_data()                           // set start value for counting and set count = 0
+void init_counter_and_data()
 {
   uint32_t cmd_data = 0;
   String value3;
@@ -514,11 +543,10 @@ void init_counter_and_data()                           // set start value for co
 }
 
 // Save month data from MQTT
-void set_month_data( )                          // set data for a comsumption month
+void set_month_data( )
 {
   uint32_t cmd_data = 0;
   uint8_t  cmd_month = 0;
-  uint8_t  cmd_address = 0;
   String value2;
   String value3;
 
@@ -535,9 +563,7 @@ void set_month_data( )                          // set data for a comsumption mo
       value3 = MQTT_command.substring( MQTT_command.indexOf(';') + 1);
       cmd_data = value3.toInt();
     }
-    cmd_address  = ADDRESS_MONTH_01  + ( cmd_month - 1 ) * 4;            // calculate address for current month
-    set_My_4_bytes( cmd_address, cmd_data );
-    set_Byte(ADDRESS_MONTH_FLAG_BASE + (cmd_month - 1), FLAG_VALID);
+    set_month( cmd_month, (uint16_t)cmd_data );
   }
 
   publish_month( );
@@ -554,7 +580,7 @@ void command_parser()
   // value for x : either 1 to 12 for a single month, x > 12 shows all 12 months
   //****************************************************************************************
   if ( MQTT_command.indexOf( "Month" ) >= 0 ) publish_month();
-  
+
   //********* Set consumption for the start of a heating period ****************************
   // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitP, x"
@@ -566,7 +592,7 @@ void command_parser()
   // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitS, x"
   // value for x : consumption in liter
-  //****************************************************************************************  
+  //****************************************************************************************
   if ( MQTT_command.indexOf( "InitS" ) >= 0 ) set_start();
   
   //********* Set consumption for a single month to init data   ****************************
@@ -574,60 +600,59 @@ void command_parser()
   // PAYLOAD : "InitM, x ; y"
   // value for x : selected month
   // value for y : consumption in liter
-  //****************************************************************************************  
+  //****************************************************************************************
   if ( MQTT_command.indexOf( "InitM" ) >= 0 ) set_month_data();
-
+  
   //********* Set consumption for the strat of a counting period ***************************
   // Initialize RTC chip and set initial consumption value for count = 0of a counting period 
   // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitC, x"
   // value for x : consumption in liter
-  //****************************************************************************************  
+  //****************************************************************************************
   if ( MQTT_command.indexOf( "InitC" ) >= 0 ) init_counter_and_data();
-
+  
   //********* Set consumption of the last day to zero **************************************
   // SYNTAX  : "Energy/Gas/command"
   // PAYLOAD : "InitD"
-  //**************************************************************************************** 
+  //****************************************************************************************
   if ( MQTT_command.indexOf( "InitD" ) >= 0 ) init_day_counter();
 }
 
-// Initialize hardware, netzwork, MQTT, OTA and RAM-values
+// Initialize hardware, network, MQTT, OTA and RAM-values
 void setup()
 {
   Serial.begin(115200);
   delay(1000);
-  pinMode(RESET_PIN, INPUT_PULLUP);             // pull to ground if you want to clear the RTC Data
-  pinMode(UPDATE_PIN, INPUT_PULLUP);            // pull to ground if you want prevent ESP going to sleep
+  pinMode(RESET_PIN, INPUT_PULLUP);           // pull to ground if you want to clear the RTC Data
+  pinMode(UPDATE_PIN, INPUT_PULLUP);          // pull to ground if you want prevent ESP going to sleep
 
-  Wire.setClock(50000);                         // reduce SCL speed to 50kHz
+
+  Wire.setClock(50000);                       // reduce SCL speed to 50kHz
   Wire.begin();
 
-  // connect to WiFi
+  // Connect to WiFi
   Gas_WiFi_connect();
   begin_time();
 
   #ifdef THINGSPEAK
-    ThingSpeak.begin(client1);                  // Initialize Thingspeak
+    ThingSpeak.begin(client1);                // Initialize Thingspeak
   #endif
 
   // Optional hardware reset
   if (digitalRead(RESET_PIN) == 0)
   {
     init_counter();
-    // Beim kompletten Reset auch Initialisierungs-Flag zurücksetzen
-    set_Byte(ADDRESS_DAY_INITIALIZED, 0);
+    set_Byte(ADDRESS_DAY_INITIALIZED, 0);     // Beim kompletten Reset auch Initialisierungs-Flag zurücksetzen
     set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
-    //set_My_4_bytes(ADDRESS_DAY_START_COUNT, 0);
+    set_Byte(ADDRESS_MONTHS_VALID, 0x00);
   }
 
-  // Setup MQTT Client
-  setup_MQTT();
+  setup_MQTT();                               // Setup MQTT Client
 
   // get start consumption
   if (get_My_4_bytes_with_flag(ADDRESS_START_METER, ADDRESS_START_METER_FLAG, start_consumption) != true)
     start_consumption = 0;
-  
+
   // get period consumption
   if (get_My_4_bytes_with_flag(ADDRESS_START_PERIOD, ADDRESS_START_PERIOD_FLAG, start_period) != true)
     start_period = 0;
@@ -639,18 +664,15 @@ void setup()
   day_initialized = get_Byte(ADDRESS_DAY_INITIALIZED);
   day_state = get_Byte(ADDRESS_DAY_STATE);
 
-//  if (day_state != DAY_STATE_MANUAL_RESET)
-//    day_state = DAY_STATE_NORMAL;
-
-if (day_initialized == 0)
-{
-  init_day_counter();
-  day_initialized = 1;
-}
-else
-{
-  day_state = DAY_STATE_NORMAL;
-}
+  if (day_initialized == 0)
+  {
+    init_day_counter();
+    day_initialized = 1;
+  }
+  else
+  {
+    day_state = DAY_STATE_NORMAL;
+  }
 
   // Initialise OTA
   ArduinoOTA.setPort(8266);
@@ -688,7 +710,7 @@ void publish_debug_topics(const char* tag)
 void loop()
 {
   mqtt.loop();
-  ArduinoOTA.handle();   // keep OTA responsive
+  ArduinoOTA.handle();                  // keep OTA responsive
 
   error = false;
 
@@ -708,9 +730,7 @@ void loop()
   }
 
   if (!get_LocalTime())
-  {
     return;
-  }
 
   uint8_t stored_day = 0;
   uint8_t stored_month = 0;
@@ -719,38 +739,51 @@ void loop()
   get_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
 
   // Restore valid values if stored values are corrupt
-  if (stored_month < 1 || stored_month > 12 || stored_day < 1 || stored_day > 31)
+  if (!validDate(stored_day, stored_month, stored_year))
   {
+    publish_topic("debug/day_change", "before correction: ");
+    publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
+    publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
     stored_day = Gas_day;
     stored_month = Gas_month;
     stored_year = Gas_year;
+    publish_topic("debug/day_change", "after correction: ");
+    publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
+    publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
     set_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
-  }
-
-  if (day_initialized == 0)
-  {
-    set_Byte(ADDRESS_DAY_INITIALIZED, 1);
-    set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
+    set_My_4_bytes(ADDRESS_DAY_START_COUNT, new_count);
+    day_start_count = new_count;
+    daily_count = 0;
     day_initialized = 1;
     day_state = DAY_STATE_NORMAL;
+    set_Byte(ADDRESS_DAY_INITIALIZED, 1);
+    set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
+    publish_topic("debug/day_change", "invalid date -> init");
   }
-
-  if ((Gas_day != stored_day) || (Gas_month != stored_month) || (Gas_year != stored_year))
+  else if ((Gas_day != stored_day) || (Gas_month != stored_month) || (Gas_year != stored_year))
   {
     day_start_count = new_count;
     daily_count = 0;
     set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
     set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
-//    publish_topic("debug/daily_count", "if-Zweig");
+    publish_topic("debug/day_change", "day change");
+    publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
+    publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
+    publish_topic("debug/day_change", "day_start_count: " + String(day_start_count));
+    publish_topic("debug/day_change", "new_count: " + String(new_count));
   }
   else
   {
-    // Correction of any implausible condition 
+    // Correction of any implausible condition
     if (day_start_count > new_count)
-    day_start_count = new_count;
-    // 
-    daily_count = (new_count >= day_start_count) ? (new_count - day_start_count) : 0;
-//    publish_topic("debug/daily_count", "else-Zweig");
+      day_start_count = new_count;
+
+    daily_count = new_count - day_start_count;
+    publish_topic("debug/day_change", "no day change");
+    publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
+    publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
+    publish_topic("debug/day_change", "day_start_count: " + String(day_start_count));
+    publish_topic("debug/day_change", "new_count: " + String(new_count));
   }
 
   daily_consumption_l = daily_count * liter_per_count;
@@ -761,25 +794,6 @@ void loop()
 
   // Save previous counter/time/date for the next loop iteration
   set_My_4_bytes(ADDRESS_OLD_COUNTER, new_count);
-  get_Time(ADDRESS_OLD_TIME, old_hour, old_min, old_sec);
-  set_Time(ADDRESS_OLD_TIME, Gas_hour, Gas_min, Gas_sec);
-
-  set_month(Gas_month, new_count);
-  set_Date(ADDRESS_OLD_DATE, Gas_day, Gas_month, Gas_year);
-
-  period = (Gas_hour - old_hour) * 3600L +
-           (Gas_min - old_min) * 60 +
-           (Gas_sec - old_sec);
-
-  new_time = (Gas_hour) * 3600L +
-             (Gas_min) * 60 +
-             (Gas_sec);
-
-  old_time = (old_hour) * 3600L +
-             (old_min) * 60 +
-             (old_sec);
-
-  delta_count = new_count - old_count;
 
   consumption  = (start_consumption + new_count * liter_per_count) / 1000.0;
   total_energy = consumption * brennwert * zustandszahl;
@@ -789,7 +803,7 @@ void loop()
   dtostrf(energy1, 12, 3, valueString2);
   dtostrf(consumption, 12, 3, valueString3);
   dtostrf(new_count, 10, 0, valueString4);
-  dtostrf(3600L / (new_time - old_time) * energy1, 12, 3, valueString5);
+  dtostrf(energy1, 12, 3, valueString5);
   dtostrf(start_consumption / 1000.0, 12, 3, valueString6);
   dtostrf(start_period / 1000.0, 12, 3, valueString7);
   dtostrf(daily_consumption_l, 12, 0, valueString9);
@@ -829,7 +843,6 @@ void loop()
   }
   else
   {
-    delay(1000);
+    delay(3000);
   }
-  
 }
