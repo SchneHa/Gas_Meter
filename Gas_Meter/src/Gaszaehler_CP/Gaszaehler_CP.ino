@@ -9,6 +9,8 @@
 */
 /**************************************************************************/
 #define THINGSPEAK                                                        // if you want to send data to the Internet
+// #define debugserial                                                    // uncomment if you would like to see debug lines in serial monitor
+// #define debugmqtt                                                      // uncomment if you would like to see debug lines over MWTT
 
 #include <Wire.h>
 #include <PicoMQTT.h>
@@ -47,13 +49,15 @@
 #define ADDRESS_MONTHS_VALID       (RAM_BASE + 23)                        // 1 Byte
 #define ADDRESS_MONTH_01           (RAM_BASE + 24)                        // 12 x 2 Byte = 24 Byte
 
-#define MQTT_DEBUG_NEW_COUNT       "debug/new_count"
-#define MQTT_DEBUG_DAY_START_COUNT "debug/day_start_count"
-#define MQTT_DEBUG_DAILY_COUNT     "debug/daily_count"
-#define MQTT_DEBUG_DAY_INIT        "debug/day_initialized"
-#define MQTT_DEBUG_DATE            "debug/date"
-#define MQTT_DEBUG_TIME            "debug/time"
-#define MQTT_DEBUG_TAG             "debug/tag"
+#ifdef debugmqtt
+  #define MQTT_DEBUG_NEW_COUNT       "debug/new_count"
+  #define MQTT_DEBUG_DAY_START_COUNT "debug/day_start_count"
+  #define MQTT_DEBUG_DAILY_COUNT     "debug/daily_count"
+  #define MQTT_DEBUG_DAY_INIT        "debug/day_initialized"
+  #define MQTT_DEBUG_DATE            "debug/date"
+  #define MQTT_DEBUG_TIME            "debug/time"
+  #define MQTT_DEBUG_TAG             "debug/tag"
+#endif
 
 // Global runtime state
 bool      error               = false;            // report error to MQTT
@@ -194,8 +198,10 @@ bool get_Integer( int8_t address, int16_t &value )
   byte len = Wire.requestFrom( COUNTER_ADDRESS, 2 );
   if ( len == 0 )
   {
-    Serial.println("");
-    Serial.println("***************** Error occured when reading 2 bytes ******************");
+    #ifdef debugserial
+      Serial.println("");
+      Serial.println("***************** Error occured when reading 2 bytes ******************");
+    #endif
     return false;
   }
   temp_data.byte_data[ 0 ] = Wire.read( );
@@ -229,8 +235,10 @@ bool get_My_4_bytes( int8_t address, uint32_t &value )
   byte len = Wire.requestFrom( COUNTER_ADDRESS, 4 );
   if ( len == 0 )
   {
-    Serial.println("");
-    Serial.println("********************* Error occured when reading My 4 bytes **************");
+    #ifdef debugserial
+      Serial.println("");
+      Serial.println("********************* Error occured when reading My 4 bytes **************");
+    #endif
     return false;
   }
   temp_data.byte_data[ 0 ] = Wire.read( );
@@ -251,8 +259,10 @@ bool get_Counter( int8_t address, uint32_t &count  )
   byte len = Wire.requestFrom( COUNTER_ADDRESS, 3 );
   if ( len == 0 )
   {
-    Serial.println("");
-    Serial.println("********************* Error occured when reading Counter *****************");
+    #ifdef debugserial
+      Serial.println("");
+      Serial.println("********************* Error occured when reading Counter *****************");
+    #endif
     return false;
   }
 
@@ -439,9 +449,11 @@ void init_day_counter()
   set_Byte(ADDRESS_DAY_INITIALIZED, 1);
   set_Byte(ADDRESS_DAY_STATE, DAY_STATE_MANUAL_RESET);
 
-  publish_topic("debug/day_start_count", String(day_start_count));
-  publish_topic("debug/daily_count", "0");
-  publish_topic("debug/day_initialized", "1");
+  #ifdef debugmqtt
+    publish_topic("debug/day_start_count", String(day_start_count));
+    publish_topic("debug/daily_count", "0");
+    publish_topic("debug/day_initialized", "1");
+  #endif  
 
   MQTT_command = "";
 }
@@ -691,20 +703,23 @@ void setup()
   //**************************************************************************************************
   //
 
-// Publish debug values for MQTT monitoring
-void publish_debug_topics(const char* tag)
-{
-  char buf[32];
-  publish_topic(MQTT_DEBUG_NEW_COUNT, String(new_count));
-  publish_topic(MQTT_DEBUG_DAY_START_COUNT, String(day_start_count));
-  publish_topic(MQTT_DEBUG_DAILY_COUNT, String(daily_count));
-  publish_topic(MQTT_DEBUG_DAY_INIT, String(day_initialized));
-  snprintf(buf, sizeof(buf), "%02d.%02d.%04d", Gas_day, Gas_month, Gas_year);
-  publish_topic(MQTT_DEBUG_DATE, buf);
-  snprintf(buf, sizeof(buf), "%02d:%02d:%02d", Gas_hour, Gas_min, Gas_sec);
-  publish_topic(MQTT_DEBUG_TIME, buf);
-  publish_topic(MQTT_DEBUG_TAG, String(tag));
-}
+
+#ifdef debugmqtt
+  // Publish debug values for MQTT monitoring
+  void publish_debug_topics(const char* tag)
+  {
+    char buf[32];
+    publish_topic(MQTT_DEBUG_NEW_COUNT, String(new_count));
+    publish_topic(MQTT_DEBUG_DAY_START_COUNT, String(day_start_count));
+    publish_topic(MQTT_DEBUG_DAILY_COUNT, String(daily_count));
+    publish_topic(MQTT_DEBUG_DAY_INIT, String(day_initialized));
+    snprintf(buf, sizeof(buf), "%02d.%02d.%04d", Gas_day, Gas_month, Gas_year);
+    publish_topic(MQTT_DEBUG_DATE, buf);
+    snprintf(buf, sizeof(buf), "%02d:%02d:%02d", Gas_hour, Gas_min, Gas_sec);
+    publish_topic(MQTT_DEBUG_TIME, buf);
+    publish_topic(MQTT_DEBUG_TAG, String(tag));
+  }
+#endif  
 
 // It reads the counter, updates daily/monthly values, publishes data, and then goes to sleep
 void loop()
@@ -741,15 +756,19 @@ void loop()
   // Restore valid values if stored values are corrupt
   if (!validDate(stored_day, stored_month, stored_year))
   {
-    publish_topic("debug/day_change", "before correction: ");
-    publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
-    publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
+    #ifdef debugmqtt
+      publish_topic("debug/day_change", "before correction: ");
+      publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
+      publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
+        #endif
     stored_day = Gas_day;
     stored_month = Gas_month;
     stored_year = Gas_year;
-    publish_topic("debug/day_change", "after correction: ");
-    publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
-    publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
+    #ifdef debugmqtt
+      publish_topic("debug/day_change", "after correction: ");
+      publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
+      publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
+    #endif
     set_Date(ADDRESS_DAY_DATE, stored_day, stored_month, stored_year);
     set_My_4_bytes(ADDRESS_DAY_START_COUNT, new_count);
     day_start_count = new_count;
@@ -758,7 +777,9 @@ void loop()
     day_state = DAY_STATE_NORMAL;
     set_Byte(ADDRESS_DAY_INITIALIZED, 1);
     set_Byte(ADDRESS_DAY_STATE, DAY_STATE_NORMAL);
-    publish_topic("debug/day_change", "invalid date -> init");
+    #ifdef debugmqtt
+      publish_topic("debug/day_change", "invalid date -> init");
+    #endif
   }
   else if ((Gas_day != stored_day) || (Gas_month != stored_month) || (Gas_year != stored_year))
   {
@@ -766,11 +787,13 @@ void loop()
     daily_count = 0;
     set_My_4_bytes(ADDRESS_DAY_START_COUNT, day_start_count);
     set_Date(ADDRESS_DAY_DATE, Gas_day, Gas_month, Gas_year);
-    publish_topic("debug/day_change", "day change");
-    publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
-    publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
-    publish_topic("debug/day_change", "day_start_count: " + String(day_start_count));
-    publish_topic("debug/day_change", "new_count: " + String(new_count));
+    #ifdef debugmqtt
+      publish_topic("debug/day_change", "day change");
+      publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
+      publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
+      publish_topic("debug/day_change", "day_start_count: " + String(day_start_count));
+      publish_topic("debug/day_change", "new_count: " + String(new_count));
+    #endif
   }
   else
   {
@@ -779,18 +802,22 @@ void loop()
       day_start_count = new_count;
 
     daily_count = new_count - day_start_count;
-    publish_topic("debug/day_change", "no day change");
-    publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
-    publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
-    publish_topic("debug/day_change", "day_start_count: " + String(day_start_count));
-    publish_topic("debug/day_change", "new_count: " + String(new_count));
+    #ifdef debugmqtt
+      publish_topic("debug/day_change", "no day change");
+      publish_topic("debug/day_change", "Gas_date: " + String(Gas_day) + "." + String(Gas_month) + "." + String(Gas_year));
+      publish_topic("debug/day_change", "stored_date: " + String(stored_day) + "." + String(stored_month) + "." + String(stored_year));
+      publish_topic("debug/day_change", "day_start_count: " + String(day_start_count));
+      publish_topic("debug/day_change", "new_count: " + String(new_count));
+    #endif
   }
 
   daily_consumption_l = daily_count * liter_per_count;
   daily_volume_m3     = daily_count * mexp3_per_count;
   daily_energy_kWh    = daily_count * mexp3_per_count * brennwert * zustandszahl;
 
-  publish_debug_topics("after_daily_calc");
+  #ifdef debugmqtt
+    publish_debug_topics("after_daily_calc");
+  #endif
 
   // Save previous counter/time/date for the next loop iteration
   set_My_4_bytes(ADDRESS_OLD_COUNTER, new_count);
